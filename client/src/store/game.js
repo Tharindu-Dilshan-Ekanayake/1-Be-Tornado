@@ -5,12 +5,13 @@ import { createProfile, createSession } from '@shared/logic'
 
 /**
  * Everything the UI renders from. Written by the network layer (profile, events) and
- * the 10 Hz game ticker (zones, timers) - never from a frame loop.
+ * the 10 Hz game ticker (zones) - never from a frame loop.
  *
- * Components must select narrowly (`useGame((s) => s.profile.wins)`), so a Health tick
- * re-renders the Health label and nothing else.
+ * Components must select narrowly (`useGame((s) => s.profile.wins)`), so a Power tick
+ * re-renders the Power label and nothing else.
  */
 
+const MAX_FEED = 4
 
 export const useGame = create((set, get) => ({
   /** Authoritative copy of the player's save, as last sent by the server. */
@@ -23,7 +24,7 @@ export const useGame = create((set, get) => ({
   playable: false,
 
   net: {
-    /** 'connecting' | 'online' | 'offline' */
+    /** 'connecting' | 'online' | 'offline' | 'replaced' */
     mode: 'connecting',
     lobbyId: null,
     /** Short code friends join with, for private lobbies. */
@@ -36,32 +37,39 @@ export const useGame = create((set, get) => ({
   sphinxStock: SPHINX_STOCK_DEFAULT,
   leaderboards: null,
 
-  /** Where the player is standing, from the ticker. */
-  zone: { pad: -1, padNear: -1, rollZone: false, atPosts: false, stand: -1, egg: null, portal: null, freeReward: false, sphinx: false },
+  /**
+   * Where the player is, from the ticker: the Storm Zone, tornado stand (its BUY spot) or
+   * egg they're at, by the free reward, the city they're in (`stage`, -1 off any island)
+   * and the one they're nearest along the chain (`near`, -1 in the lobby).
+   */
+  zone: { pad: -1, stand: -1, egg: null, freeReward: false, stage: -1, near: -1 },
 
-  /** Which modal panel is open: 'rebirth' | 'daily' | 'pets' | 'items' | 'store' | ... */
+  /** Which modal panel is open: 'rebirth' | 'types' | 'stages' | 'upgrades' | 'store' | ... */
   panel: null,
-  /** Extra data for the open panel (e.g. which egg the hatch panel is for). */
+  /** Extra data for the open panel. */
   panelData: null,
 
-  /** A roll in progress: { distance, wins, prize, blocked, duration, best }. */
-  roll: null,
-  /** Wins earned by the current roll, held back from the HUD until the tire stops. */
-  pendingWins: 0,
-  /** "+N Wins!" result once the tire has stopped. */
-  rollResult: null,
-  /** A short celebration banner: { text, id } (new zone, ad reward, Gems purchase). */
+  /** A short line across the middle: { text, id } (ad rewards, purchases, quests). */
   toast: null,
+  /** The big announcement showing now ({ id, title, subtitle, kind }), and those waiting. */
+  banner: null,
+  bannerQueue: [],
+  /** Recent server news ("X destroyed the Clock Tower!"): [{ id, text }]. */
+  feed: [],
+  /** Your absorb streak as the server last counted it, and when (performance.now()). */
+  streak: { count: 0, at: 0 },
+  /** City -> how many of its things you've destroyed towards its next clear (the server's count). */
+  rounds: {},
+  /** When your Surge is ready again (performance.now() ms). */
+  surgeReadyAt: 0,
   /** Active hatch animation: { eggId, pets }. */
   hatch: null,
   /** Keep hatching the egg you're standing at (the T button). Client-side only. */
   autoHatch: false,
 
-
   // --- Actions -----------------------------------------------------------------
 
-  setProfile: (profile, session) =>
-    set((s) => ({ profile, session: session || s.session, profileLoaded: true })),
+  setProfile: (profile, session) => set((s) => ({ profile, session: session || s.session, profileLoaded: true })),
   patchProfile: (patch) => set((s) => ({ profile: { ...s.profile, ...patch } })),
   setNet: (patch) => set((s) => ({ net: { ...s.net, ...patch } })),
   setZone: (zone) => set({ zone }),
@@ -73,22 +81,25 @@ export const useGame = create((set, get) => ({
   closePanel: () => set({ panel: null, panelData: null }),
   togglePanel: (panel) => set((s) => (s.panel === panel ? { panel: null, panelData: null } : { panel, panelData: null })),
 
-  /** kind: 'info' | 'error' | 'success' | 'badge' */
+  showToast: (text) => set({ toast: { text, id: Date.now() + Math.random() } }),
 
-  // A lucky gift's Wins wait for the landing too.
-  startRoll: (roll) => set({ roll, pendingWins: roll.wins + roll.prize + (roll.giftWins || 0) }),
-  endRoll: () => {
-    const { roll } = get()
-    set({
-      roll: null,
-      pendingWins: 0,
-      rollResult: roll
-        ? { wins: roll.wins, prize: roll.prize, distance: roll.distance, blocked: roll.blocked, best: roll.best, id: Date.now() }
-        : null,
-    })
+  /** Queues a big announcement; `kind` picks its colours ('stage' | 'landmark' | 'ring' | 'tornado' | 'rebirth' | 'quest'). */
+  pushBanner: (title, subtitle = '', kind = 'stage') => {
+    const banner = { id: Date.now() + Math.random(), title, subtitle, kind }
+    const { banner: showing, bannerQueue } = get()
+    if (!showing) set({ banner })
+    else if (bannerQueue.length < 4) set({ bannerQueue: [...bannerQueue, banner] })
   },
-  clearRollResult: () => set({ rollResult: null }),
-  showToast: (text) => set({ toast: { text, id: Date.now() } }),
+  nextBanner: () => {
+    const [next = null, ...rest] = get().bannerQueue
+    set({ banner: next, bannerQueue: rest })
+  },
+  pushFeed: (text) => set((s) => ({ feed: [...s.feed, { id: Date.now() + Math.random(), text }].slice(-MAX_FEED) })),
+  dropFeed: (id) => set((s) => ({ feed: s.feed.filter((f) => f.id !== id) })),
+  setStreak: (count) => set({ streak: { count, at: performance.now() } }),
+  setRound: (stage, done) => set((s) => ({ rounds: { ...s.rounds, [stage]: done } })),
+  resetRounds: () => set({ rounds: {} }),
+  setSurgeReady: (surgeReadyAt) => set({ surgeReadyAt }),
 
   setHatch: (hatch) => set({ hatch }),
   setAutoHatch: (autoHatch) => set({ autoHatch }),

@@ -3,21 +3,20 @@ import { useEffect, useRef } from 'react'
 import { Vector3 } from 'three'
 
 import { getBloxityState } from '../bloxity/store'
-import { launch } from './launch'
 import { placeLocalBubble } from './remote/nameplates'
-import { PULL_DIST } from './roll/path'
 import { runtime } from './runtime'
 
-/** How high above the player's feet the camera aims. */
-const LOOK_HEIGHT = 1.6
+/** How high above the ground the camera aims: a little way up the funnel. */
+const LOOK_HEIGHT = 2
 
-const MIN_DISTANCE = 4
-const MAX_DISTANCE = 26
+/** Zoom limits, as multiples of the view the tornado's size calls for. */
+const MIN_ZOOM = 0.45
+const MAX_ZOOM = 2.2
 
 // Pitch limits, in radians. Stops the camera flipping over the top or sinking
 // under the ground.
-const MIN_PITCH = -0.05
-const MAX_PITCH = 1.2
+const MIN_PITCH = 0.08
+const MAX_PITCH = 1.3
 
 const DRAG_SENSITIVITY = 0.005
 const TOUCH_SENSITIVITY = 0.007
@@ -28,9 +27,11 @@ const POSITION_SMOOTHING = 10
 const LOOK_SMOOTHING = 14
 
 const _desired = new Vector3()
+/** Where the camera looks, eased (one camera, so module-level). */
+const _lookAt = new Vector3()
 const _target = new Vector3()
-/** How far the view has swung round for the stretch (0-1), eased. */
-let stretchView = 0
+/** How far back the camera sits for a tornado of `radius`: bigger tornado, wider view. */
+const distanceFor = (radius) => 9 + radius * 3.1
 
 /**
  * Third-person orbit camera around the player.
@@ -38,15 +39,16 @@ let stretchView = 0
  * Mouse: drag (either button) orbits, wheel zooms. Touch: one-finger drag orbits (the
  * joystick owns the left side of the screen as a separate element), pinch zooms.
  *
- * Orbit state lives in `runtime.camera`, so the roll can hand the camera
- * back exactly where it took it from. Drag speed is scaled by the player's Boxity
+ * It sits further back the bigger your tornado grows (so the funnel and what's around it
+ * always fit), looking down a little onto the city; zoom scales that. Orbit state lives
+ * in `runtime.camera`; `runtime.camera.shake` jolts it for a moment (a landmark coming
+ * down, a Surge). Drag speed is scaled by the player's Boxity
  * camera_sensitivity setting. Also places your own chat bubble each frame, once the
  * camera has moved (it needs the final camera to project).
  */
 export function FollowCamera() {
   const camera = useThree((s) => s.camera)
   const gl = useThree((s) => s.gl)
-  const lookAt = useRef(new Vector3())
   const initialised = useRef(false)
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export function FollowCamera() {
         last.y = e.clientY
         const [a, b] = [...pointers.values()]
         const d = Math.hypot(a.x - b.x, a.y - b.y)
-        orbit.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, orbit.distance - (d - pinchDistance) * 0.04))
+        orbit.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (orbit.zoom ?? 1) - (d - pinchDistance) * 0.004))
         pinchDistance = d
         return
       }
@@ -100,7 +102,7 @@ export function FollowCamera() {
     const onWheel = (e) => {
       // Without this the page scrolls behind the canvas.
       e.preventDefault()
-      orbit.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, orbit.distance + e.deltaY * ZOOM_SENSITIVITY))
+      orbit.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (orbit.zoom ?? 1) + e.deltaY * ZOOM_SENSITIVITY * 0.08))
     }
 
     // Right-dragging otherwise opens the browser context menu mid-orbit.
@@ -126,30 +128,36 @@ export function FollowCamera() {
 
   useFrame((state, rawDelta) => {
     if (runtime.camera.mode !== 'follow') {
-      // Whoever owns the camera now is moving it; pick up smoothly when it's handed back.
-      lookAt.current.copy(runtime.player.position).setY(runtime.player.position.y + LOOK_HEIGHT)
+      // Whoever owns the camera now (the debug tools) is moving it.
       placeLocalBubble(camera, state.size.width, state.size.height)
       return
     }
     const delta = Math.min(rawDelta, 0.05)
     const p = runtime.player.position
-    // Holding the launch posts: swing round to three-quarters on, back and a little lower,
-    // so the stretching arms and the posts stay in view (and clear of the LAUNCH button
-    // below), more the further back you've walked.
-    const want = launch.gripping || launch.released ? 0.35 + 0.65 * Math.min(1, launch.back / PULL_DIST) : 0
-    stretchView += (want - stretchView) * (1 - Math.exp(-6 * delta))
-    _target.set(p.x, p.y + LOOK_HEIGHT - 1.3 * stretchView, p.z)
+    const radius = runtime.tornado.radius
+    _target.set(p.x, p.y + LOOK_HEIGHT + radius * 0.35, p.z)
 
     // Spherical -> cartesian. yaw 0 puts the camera south of the player, looking north.
-    const yaw = runtime.camera.yaw + 0.75 * stretchView
-    const pitch = runtime.camera.pitch + 0.16 * stretchView
-    const distance = runtime.camera.distance + 1.5 * stretchView
+    const yaw = runtime.camera.yaw
+    const pitch = runtime.camera.pitch
+    const distance = distanceFor(radius) * (runtime.camera.zoom ?? 1)
+    runtime.camera.distance = distance
     const horizontal = Math.cos(pitch) * distance
     _desired.set(
       _target.x + Math.sin(yaw) * horizontal,
-      Math.max(_target.y + Math.sin(pitch) * distance, 0.6),
+      Math.max(_target.y + Math.sin(pitch) * distance, 1.2),
       _target.z + Math.cos(yaw) * horizontal,
     )
+    // Big smashes shake the view a moment (as hard from a big tornado's far-off view).
+    const shake = runtime.camera.shake
+    if (shake > 0.001) {
+      const t = state.clock.elapsedTime
+      const amp = shake * Math.max(1, distance / 18)
+      _desired.x += Math.sin(t * 61) * amp
+      _desired.y += Math.sin(t * 47 + 1) * amp * 0.7
+      _desired.z += Math.cos(t * 53) * amp
+      runtime.camera.shake = shake * Math.exp(-6 * delta)
+    }
 
     // After a slide the camera is far down the hill; jump back rather than swoop.
     if (runtime.camera.snap) {
@@ -160,13 +168,14 @@ export function FollowCamera() {
     if (!initialised.current) {
       // Avoid a long swoop in from wherever the default camera started.
       camera.position.copy(_desired)
-      lookAt.current.copy(_target)
+      _lookAt.copy(_target)
       initialised.current = true
     }
 
     camera.position.lerp(_desired, 1 - Math.exp(-POSITION_SMOOTHING * delta))
-    lookAt.current.lerp(_target, 1 - Math.exp(-LOOK_SMOOTHING * delta))
-    camera.lookAt(lookAt.current)
+    if (shake > 0.001) camera.position.lerp(_desired, 0.5)
+    _lookAt.lerp(_target, 1 - Math.exp(-LOOK_SMOOTHING * delta))
+    camera.lookAt(_lookAt)
     camera.updateMatrixWorld()
     placeLocalBubble(camera, state.size.width, state.size.height)
   })

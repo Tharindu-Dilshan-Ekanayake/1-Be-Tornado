@@ -18,4 +18,8 @@ export const skyUniforms = {
   /** How many thin high clouds streak across it, and how many stars show (0-1 each). */
   clouds: { value: SKY.clouds },
   stars: { value: SKY.stars },
+  /** Storm clouds rolling over (0-1), a lightning flash lighting the sky (0-1), and their clock. */
+  storm: { value: 0 },
+  flash: { value: 0 },
+  time: { value: 0 },
 }

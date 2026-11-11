@@ -4,7 +4,7 @@ import { formatDuration, formatNumber } from '@shared/format'
 export const BOARD_INFO = {
   rebirths: { title: 'Top Rebirths', color: '#c45cff', format: (v) => formatNumber(v) },
   wins: { title: 'Top Wins', color: '#3fdc4a', format: (v) => formatNumber(v) },
-  distance: { title: 'Longest Flight', color: '#ffb21e', format: (v) => `${formatNumber(v)} m` },
+  destroyed: { title: 'Most Destroyed', color: '#ffb21e', format: (v) => formatNumber(v) },
   playtime: { title: 'Top Playtime', color: '#4fc3ff', format: (v) => formatDuration(v * 1000) },
 }
 
@@ -12,7 +12,7 @@ export const BOARD_INFO = {
 const OWN_VALUE = {
   rebirths: (p) => p.rebirths,
   wins: (p) => p.stats.totalWins,
-  distance: (p) => p.stats.bestDistance,
+  destroyed: (p) => p.stats.absorbed,
   playtime: (p) => p.stats.playtime,
 }
 

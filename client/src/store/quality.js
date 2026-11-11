@@ -17,30 +17,44 @@ export const PRESETS = {
     shadows: 'blob',
     shadowMapSize: 0,
     particles: false,
-    speedLines: true,
-    /** Motion blur down the sides at speed (post-processing): samples a pixel, 0 = off. */
-    motionBlur: 0,
-    viewDistance: 190,
-    fogNear: 60,
+    /** Bricks whirling round the tornadoes (0 = off: the funnel shader's specks only). */
+    debris: 0,
+    /** The tornado funnel's mesh: nested shells, segments round, rings up. */
+    funnelDetail: { layers: 2, segments: 20, rings: 10, skirt: true },
+    /**
+     * Wreckage left where things were torn up, until they come back: boxes in one
+     * InstancedMesh (one draw call), reused oldest-first. Not particles: it doesn't move.
+     */
+    rubble: 90,
+    /**
+     * How many boxes a frame may fly apart on their own when things are torn up (each
+     * object bursts into its boxes); past that, the rest fly in whole. Caps the CPU cost
+     * of a giant tornado mowing down a whole block at once.
+     */
+    shatterBoxes: 450,
+    /** The storm over the cities: a lightning bolt (one draw call, only while it flashes). */
+    lightningBolt: true,
+    /** A dark CSS vignette at the screen's edges in the storm (no post-processing). */
+    stormVignette: true,
+    viewDistance: 300,
+    fogNear: 120,
     cloudCount: 8,
     /** Max side of any generated texture. */
     maxTexture: 512,
     /**
-     * Other players are drawn this far away - the whole lobby - and the nearest
-     * `remoteAvatars` of them within `remoteAvatarDistance` as their real Boxity avatar
-     * (anyone else as the blocky figure). On every preset that's everyone in the room:
-     * players want to see each other as themselves, across the whole lobby. A Boxity
-     * avatar is ~100 triangles and one draw call plus one per worn item, so a full room
-     * of 8 typically adds 20-40 draw calls; if a weak device can't keep up, the FPS
-     * monitor lowers the resolution (RENDER_SCALES) rather than taking avatars away.
+     * Other players' tornadoes are drawn this far away, and the nearest `remoteAvatars`
+     * of them within `remoteAvatarDistance` ride as their real Boxity avatar (anyone else
+     * as the blocky figure, one draw call for all). A Boxity avatar is one draw call
+     * plus one per worn item, so LOW keeps it to the nearest three: the cities' chunks
+     * need the draw calls.
      */
-    remoteDrawDistance: 150,
+    remoteDrawDistance: 320,
     remoteAvatars: 7,
-    remoteAvatarDistance: 150,
-    remoteNameDistance: 40,
+    remoteAvatarDistance: 1000,
+    remoteNameDistance: 90,
     /** World labels fade out past this. */
-    labelDistance: 70,
-    /** How much of the canyon's scenery to spawn (0-1). */
+    labelDistance: 80,
+    /** How much of the lobby's scenery to spawn (0-1). */
     decorDensity: 0.45,
     /** Board and egg halo size multiplier. */
     boardGlow: 0.8,
@@ -51,16 +65,20 @@ export const PRESETS = {
     shadows: 'blob',
     shadowMapSize: 0,
     particles: true,
-    speedLines: true,
-    motionBlur: 8,
-    viewDistance: 300,
-    fogNear: 100,
+    debris: 180,
+    funnelDetail: { layers: 2, segments: 28, rings: 14, skirt: true },
+    rubble: 200,
+    shatterBoxes: 900,
+    lightningBolt: true,
+    stormVignette: true,
+    viewDistance: 360,
+    fogNear: 150,
     cloudCount: 14,
     maxTexture: 1024,
-    remoteDrawDistance: 150,
+    remoteDrawDistance: 380,
     remoteAvatars: 7,
-    remoteAvatarDistance: 150,
-    remoteNameDistance: 55,
+    remoteAvatarDistance: 1000,
+    remoteNameDistance: 110,
     labelDistance: 110,
     decorDensity: 0.75,
     boardGlow: 1,
@@ -71,16 +89,20 @@ export const PRESETS = {
     shadows: 'realtime',
     shadowMapSize: 1024,
     particles: true,
-    speedLines: true,
-    motionBlur: 12,
+    debris: 320,
+    funnelDetail: { layers: 3, segments: 32, rings: 16, skirt: true },
+    rubble: 320,
+    shatterBoxes: 1400,
+    lightningBolt: true,
+    stormVignette: true,
     viewDistance: 460,
-    fogNear: 140,
+    fogNear: 190,
     cloudCount: 18,
     maxTexture: 1024,
-    remoteDrawDistance: 150,
+    remoteDrawDistance: 480,
     remoteAvatars: 7,
-    remoteAvatarDistance: 150,
-    remoteNameDistance: 70,
+    remoteAvatarDistance: 1000,
+    remoteNameDistance: 130,
     labelDistance: 150,
     decorDensity: 1,
     boardGlow: 1,
@@ -115,20 +137,14 @@ function readSaved() {
 }
 
 /**
- * Phones and small CPUs (4 cores or fewer) start on LOW, the safe choice; anything bigger
- * starts on MEDIUM, and the performance monitor drops it to LOW by itself if FPS stays
- * under 45 (`degrade`, auto-picked levels only). A level picked in Settings is
- * remembered on this device and wins over both.
+ * Everyone starts on LOW, the safe choice (phones, small CPUs, and a first load that has
+ * to be playable in seconds); a player can pick MEDIUM or HIGH in Settings, and that is
+ * remembered on this device. The performance monitor still drops a preset (and then the
+ * resolution) by itself if FPS stays under 45.
  */
 export const DEFAULT_LEVEL = 'LOW'
 
-function detectLevel() {
-  if (typeof navigator === 'undefined') return DEFAULT_LEVEL
-  const cores = navigator.hardwareConcurrency || 0
-  return isMobileDevice() || cores <= 4 ? 'LOW' : 'MEDIUM'
-}
-
-const initialLevel = readSaved() || detectLevel()
+const initialLevel = readSaved() || DEFAULT_LEVEL
 
 export const useQuality = create((set, get) => ({
   level: initialLevel,

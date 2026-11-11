@@ -1,9 +1,9 @@
 import { Room } from '@colyseus/core'
 
-import { AD_REWARDS } from '../../../shared/balance.js'
-import { applyOfflineProgress } from '../../../shared/logic.js'
+import { AD_REWARDS, STAGES } from '../../../shared/balance.js'
+import { applyOfflineProgress, tornadoRadius } from '../../../shared/logic.js'
 import { PlayerSession } from '../../../shared/session.js'
-import { clampToWalkable, isRollReturn, MAX_MOVE_SPEED, SPAWN } from '../../../shared/world.js'
+import { clampToWalkable, MAX_MOVE_SPEED, SPAWN } from '../../../shared/world.js'
 import { resolveIdentity, verifyAdReward } from '../bloxityApi.js'
 import { reportLeaver } from '../bloxityLeaderboards.js'
 import { carryOverGuest, getSphinxStock, loadProfile, saveProfile, takeSphinx } from '../db.js'
@@ -25,8 +25,8 @@ const DUPLICATE_LOGIN = 4100
 /** Names this server process in save ownership; Legion sets POD_NAME per pod. */
 const POD = process.env.POD_NAME || `local-${process.pid}`
 
-/** What other players may be told someone is doing. */
-const ANIMS = ['idle', 'walk', 'run', 'jump', 'pull']
+/** What other players may be told someone is doing ('surge': their Surge just went off). */
+const ANIMS = ['idle', 'walk', 'run', 'jump', 'surge']
 /** A Boxity emote, replicated through `anim` as 'emote:<its 24-hex id>'. */
 const EMOTE_ANIM = /^emote:[a-f0-9]{24}$/
 /** Least time between two 'gemsCheck's from one player (each is a database query). */
@@ -44,9 +44,12 @@ const cleanName = (name) =>
     .slice(0, 20) || 'Player'
 
 /**
- * One lobby: up to 8 players sharing a world. All game rules run in each player's
- * PlayerSession; the room handles networking, position validation, persistence and
- * the small shared state other players render from.
+ * One server: up to 8 tornadoes sharing the lobby and the cities. All game rules run in
+ * each player's PlayerSession (what each tornado swallows is decided there, from where
+ * the room says the player is); the room handles networking, position validation,
+ * persistence and the small shared state other players render from. Cheap per player
+ * by design - no per-object state is shared or sent - so pods hold many rooms and
+ * Legion's matchmaker starts more as players come: that's how CCU scales.
  */
 export class GameRoom extends Room {
   maxClients = MAX_CLIENTS
@@ -132,39 +135,28 @@ export class GameRoom extends Room {
       now,
       emit: (type, payload) => client.send(type, payload),
       getPosition: () => player,
-      // The friends bonus: everyone else here, in the same world as you.
-      getOthers: () => {
-        let others = 0
-        for (const [sid, p] of this.state.players) if (sid !== client.sessionId && (p.world || 0) === (profile.world || 0)) others += 1
-        return others
+      // A teleport: the server moves you, and the anti-teleport check starts from there.
+      setPosition: (x, z) => {
+        player.x = x
+        player.z = z
+        const member = this.members.get(client.sessionId)
+        if (member) {
+          member.lastPos = { x, z }
+          member.lastPosAt = Date.now()
+        }
       },
+      // The friends bonus: everyone else in this server.
+      getOthers: () => Math.max(0, this.state.players.size - 1),
       onPurchase: (productId) => {
         if (productId !== 'sphinx') return true
         const ok = takeSphinx()
         if (ok) broadcastAll('stock', { sphinx: getSphinxStock() })
         return ok
       },
-      onRoll: (result) => {
-        // Everyone else watches it as a ghost tire. Excluded by session id, not by the
-        // client object from the join: after a reconnect that object is stale, and the
-        // roller would get their own roll back as a second tire.
-        const self = this.clients.find((c) => c.sessionId === client.sessionId)
-        this.broadcast(
-          'ghostRoll',
-          {
-            sid: client.sessionId,
-            distance: result.distance,
-            duration: result.duration,
-            blocked: result.blocked,
-            tireId: profile.equippedTire,
-            // How well it was timed: others see the jump smash and the flight it made.
-            hit: result.hit,
-            world: profile.world,
-            x: player.x,
-            z: player.z,
-          },
-          self ? { except: self } : undefined,
-        )
+      // A landmark down: the whole server hears about it.
+      onLandmark: (landmark) => {
+        const stage = landmark ? STAGES[Math.floor(landmark.id / 1000)] : null
+        if (stage) this.broadcast('feed', { text: `${name} destroyed the ${stage.landmark.name}!`, sid: client.sessionId })
       },
     })
 
@@ -278,12 +270,11 @@ export class GameRoom extends Room {
     const player = this.state.players.get(sessionId)
     if (!member || !player) return
     const p = member.session.profile
-    if (player.health !== p.health) player.health = p.health
-    if (player.wins !== p.wins) player.wins = p.wins
     if (player.rebirths !== p.rebirths) player.rebirths = p.rebirths
     if (player.level !== p.level) player.level = p.level
-    if (player.tireId !== p.equippedTire) player.tireId = p.equippedTire
-    if (player.world !== p.world) player.world = p.world
+    if (player.tornado !== p.equippedTornado) player.tornado = p.equippedTornado
+    const radius = Math.round(tornadoRadius(p) * 100) / 100
+    if (player.radius !== radius) player.radius = radius
     const pets = p.equippedPets
       .map((uid) => p.pets.find((pet) => pet.uid === uid)?.id)
       .filter(Boolean)
@@ -295,8 +286,9 @@ export class GameRoom extends Room {
 
   /**
    * Position reports, ~10 Hz from each client. Accepted if the move is physically
-   * possible since the last accepted one (or is the hop back after a roll);
-   * otherwise the client is snapped back.
+   * possible since the last accepted one, and kept on the ground the player may walk on
+   * (the lobby, open cities and the bridges up to the first closed gate); otherwise the
+   * client is snapped back.
    */
   handlePosition(client, msg) {
     const member = this.members.get(client.sessionId)
@@ -310,15 +302,15 @@ export class GameRoom extends Room {
     const now = Date.now()
     const dt = Math.max(0.05, (now - member.lastPosAt) / 1000)
     const dist = Math.hypot(x - member.lastPos.x, z - member.lastPos.z)
-    if (dist > MAX_MOVE_SPEED * dt + MOVE_SLACK && !isRollReturn(member.lastPos, { x, z })) {
+    if (dist > MAX_MOVE_SPEED * dt + MOVE_SLACK) {
       client.send('correct', { x: member.lastPos.x, y: player.y, z: member.lastPos.z })
       return
     }
-    const clamped = clampToWalkable(x, z)
+    const clamped = clampToWalkable(x, z, member.session.profile.unlocked)
     member.lastPos = clamped
     member.lastPosAt = now
     player.x = clamped.x
-    player.y = Math.max(0, Math.min(y, 6))
+    player.y = Math.max(0, Math.min(y, 3))
     player.z = clamped.z
     player.rotY = Number(msg.r) || 0
     player.anim = ANIMS.includes(msg.a) || (typeof msg.a === 'string' && EMOTE_ANIM.test(msg.a)) ? msg.a : 'idle'

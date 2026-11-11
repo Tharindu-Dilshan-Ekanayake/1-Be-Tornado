@@ -10,20 +10,21 @@ const SUN_DIRECTION = new Vector3(...LIGHTS.sunDirection).normalize()
 /** How far back along SUN_DIRECTION the light sits from the point it shadows. */
 const SUN_DISTANCE = 70
 /** Half-size of the square area around the player that receives shadows. */
-const SHADOW_EXTENT = 28
+const SHADOW_EXTENT = 40
 
 /**
- * Golden-hour game-day light: a cool sky fill with a warm bounce off the turf, and a warm,
- * low sun in the north-west (where the sky glows: skyState.sunDirection matches it).
+ * Daylight: a cool sky fill with a warm bounce off the ground, and a high sun in the
+ * north-west (where the sky glows: skyState.sunDirection matches it).
  *
  * Only the HIGH preset casts realtime shadows; lower presets use blob shadows instead
  * (see BlobShadows), so the shadow pass costs nothing there.
  *
  * A directional light's shadow only covers a fixed box around its target, so the sun
- * and its target follow the player, and your ball down the field while it flies.
+ * and its target follow the player.
  */
 export function Lighting() {
   const sunRef = useRef(null)
+  const hemiRef = useRef(null)
   const scene = useThree((s) => s.scene)
   const shadows = useQuality((s) => s.settings.shadows === 'realtime')
   const mapSize = useQuality((s) => s.settings.shadowMapSize) || 1024
@@ -51,7 +52,11 @@ export function Lighting() {
   useFrame(() => {
     const sun = sunRef.current
     if (!sun) return
-    const p = runtime.camera.mode === 'roll' ? runtime.flightFocus ?? runtime.player.position : runtime.player.position
+    // The storm dims the day; lightning floods everything with light for a moment.
+    const { level, flash } = runtime.storm
+    sun.intensity = LIGHTS.sunIntensity * (1 - 0.6 * level) + flash * 1.6
+    if (hemiRef.current) hemiRef.current.intensity = LIGHTS.hemiIntensity * (1 - 0.38 * level) + flash * 2.8
+    const p = runtime.player.position
     // Snap to whole units so the shadow map doesn't shimmer as the target slides.
     sun.target.position.set(Math.round(p.x), Math.round(p.y), Math.round(p.z))
     sun.position.copy(sun.target.position).addScaledVector(SUN_DIRECTION, SUN_DISTANCE)
@@ -59,7 +64,7 @@ export function Lighting() {
 
   return (
     <>
-      <hemisphereLight args={[LIGHTS.hemiSky, LIGHTS.hemiGround, LIGHTS.hemiIntensity]} />
+      <hemisphereLight ref={hemiRef} args={[LIGHTS.hemiSky, LIGHTS.hemiGround, LIGHTS.hemiIntensity]} />
       <directionalLight
         ref={sunRef}
         castShadow={shadows}

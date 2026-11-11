@@ -10,6 +10,8 @@ import NameplateLayer from './ui/NameplateLayer'
 import { prefetchPanels } from './ui/panels/panelLoaders'
 import Panels from './ui/panels/Panels'
 import PopupLayer from './ui/PopupLayer'
+import ProgressLayer from './ui/ProgressLayer'
+import StormOverlay from './ui/StormOverlay'
 import ReplacedOverlay from './ui/ReplacedOverlay'
 import ScreenFade from './ui/ScreenFade'
 import TouchControls from './ui/TouchControls'
@@ -34,11 +36,13 @@ function App() {
     <div className="relative h-full w-full select-none overflow-hidden">
       <GameController />
       <GameScene onReady={handleReady} />
+      <StormOverlay />
       <TouchControls />
       {ready && (
         <>
           <NameplateLayer />
           <PopupLayer />
+          <ProgressLayer />
           <HUD />
           <Panels />
           <HatchOverlay />

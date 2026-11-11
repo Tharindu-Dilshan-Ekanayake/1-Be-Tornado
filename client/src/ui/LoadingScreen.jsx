@@ -5,28 +5,25 @@ import { iconUrl } from './icons'
 import StrokeText from './StrokeText'
 
 const TIPS = [
-  'Hang from a pull-up bar to gain Power automatically!',
-  'More Power = you fly further, and every metre pays Wins!',
-  'Let go at the very top of the stretch for a PERFECT launch: x1.5 distance, x1.6 Wins!',
+  'You are a tornado: sweep through the city and absorb everything small enough!',
+  'Hold your tornado over a GIANT TROPHY to tear it up for Wins!',
+  'Every few levels your tornado grows a new ring: bigger tornado, more at once.',
+  'Reach the next level to open the next city - there are 20 to wreck!',
   'Rebirth at max level for x2, x3, x4... Power and a higher level cap.',
-  'The further you fly, the more each metre pays.',
-  'Spend Wins on stretchier arms, pets and better pull-up bars.',
+  'Spend Wins on stronger tornadoes: every one multiplies your Power.',
+  'Press SURGE (Space) to pull in everything around you at once!',
+  'Keep absorbing without stopping for a streak bonus.',
   'Pets multiply all the Power you gain.',
-  'You earn Power every second you fly!',
-  'Every pair of arms looks different - collect all 24!',
 ]
 
 /**
- * The loading screen's backdrop, a launch park at golden hour in plain CSS (no image to
- * download): two floodlights glowing over a deep blue sky that warms to the horizon, the
- * dark line of the far stand, and the striped runway below it. Layers, top first.
+ * The loading screen's backdrop in plain CSS (no image to download): a stormy sky over a
+ * row of toy towers, a bright break in the clouds. Layers, top first.
  */
 const STADIUM_BACKDROP = [
-  'radial-gradient(circle at 14% 20%, rgba(255,250,225,0.95) 0 0.9%, rgba(255,236,190,0.35) 3%, transparent 9%)',
-  'radial-gradient(circle at 86% 20%, rgba(255,250,225,0.95) 0 0.9%, rgba(255,236,190,0.35) 3%, transparent 9%)',
-  'repeating-linear-gradient(180deg, rgba(255,255,255,0.8) 0 3px, transparent 3px 52px) bottom / 100% 40% no-repeat',
-  'repeating-linear-gradient(180deg, #2b9a47 0 26px, #37b455 26px 52px) bottom / 100% 40% no-repeat',
-  'linear-gradient(180deg, #132f74 0%, #2c5fc0 30%, #f0a067 50%, #ffd08c 54%, #232d48 54.4%, #34436a 60%)',
+  'radial-gradient(ellipse 40% 22% at 50% 30%, rgba(255,250,225,0.55), transparent 70%)',
+  'repeating-linear-gradient(90deg, #ff7a9a 0 7%, #ffd21f 7% 13%, #5fb8ff 13% 21%, #7ae86a 21% 26%, #b15cff 26% 33%) bottom / 100% 22% no-repeat',
+  'linear-gradient(180deg, #1f2a6a 0%, #3a5ad8 35%, #8ac8ff 65%, #cfeeff 78%)',
 ].join(', ')
 
 /**
@@ -66,14 +63,14 @@ export function LoadingScreen({ done }) {
       }}
     >
       <div className="pp-loading-disc" aria-hidden="true">
-        <img src={iconUrl('tire')} alt="" width="150" height="150" draggable={false} />
+        <img src={iconUrl('tornado')} alt="" width="150" height="150" draggable={false} />
       </div>
 
-      {/* The game's name: +1 ARM over a big rainbow LENGTH, tilted like a sticker. */}
+      {/* The game's name: +1 TORNADO over a big rainbow SIZE, tilted like a sticker. */}
       <h1 className="m-0 flex flex-col items-center text-center leading-none" style={{ transform: 'rotate(-3deg)' }}>
         <span style={{ fontSize: 'clamp(36px, 8vw, 84px)' }}>
           <StrokeText stroke="0.16em" gradient="linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #ffe36b 56%, #ffb21e 100%)">
-            +1 ARM
+            +1 TORNADO
           </StrokeText>
         </span>
         <span style={{ fontSize: 'clamp(44px, 10vw, 118px)', marginTop: '-0.08em' }}>
@@ -81,11 +78,11 @@ export function LoadingScreen({ done }) {
             stroke="0.15em"
             gradient="linear-gradient(90deg, #ff4a4a 0%, #ff9a1e 18%, #ffe23a 36%, #4be05a 54%, #2fd0ff 72%, #b05cff 90%, #ff5fd2 100%)"
           >
-            LENGTH
+            SIZE
           </StrokeText>
         </span>
         <span className="text-base md:text-xl" style={{ marginTop: '0.4em' }}>
-          <StrokeText stroke={5}>TRAIN • STRETCH • FLY • REBIRTH</StrokeText>
+          <StrokeText stroke={5}>ABSORB • GROW • WRECK CITIES • REBIRTH</StrokeText>
         </span>
       </h1>
 

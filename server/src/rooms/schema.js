@@ -2,8 +2,10 @@ import { schema, t } from '@colyseus/schema'
 
 /**
  * Synced state, kept deliberately small: only what other players need to draw you.
- * Everything private (inventory, items, boosts...) goes to its owner alone as
- * 'profile' messages, never through the shared state.
+ * Everything private (Power, Wins, inventory, items, boosts...) goes to its owner alone
+ * as 'profile' / 'absorb' messages, never through the shared state: Power changes many
+ * times a second while you absorb, and nobody else needs it (patches stay tiny, which
+ * is what lets a pod hold many busy rooms).
  */
 export const PlayerState = schema(
   {
@@ -14,18 +16,16 @@ export const PlayerState = schema(
     y: t.float32(),
     z: t.float32(),
     rotY: t.float32(),
-    /** 'idle' | 'walk' | 'run' (pull-ups on a bar) | 'jump' | 'pull' (stretching back on the launch posts) | 'emote:<Boxity emote id>' */
+    /** 'idle' | 'walk' | 'run' (in a Storm Zone) | 'jump' | 'surge' (their Surge went off) | 'emote:<Boxity emote id>' */
     anim: t.string(),
     /** What their Bloxity avatar wears, as JSON `{ equipped, proportions }` ('' = base). */
     look: t.string(),
-    tireId: t.string(),
+    /** Their tornado type (balance TORNADOES id) and its radius in metres: how others draw it. */
+    tornado: t.string(),
+    radius: t.float32(),
     /** Equipped pet species, at most 3. */
     petIds: t.array('string'),
-    health: t.float64(),
-    wins: t.float64(),
     rebirths: t.uint16(),
-    /** The world they're in (balance WORLDS): players only see others in theirs. */
-    world: t.uint8(),
     level: t.uint16(),
   },
   'PlayerState',

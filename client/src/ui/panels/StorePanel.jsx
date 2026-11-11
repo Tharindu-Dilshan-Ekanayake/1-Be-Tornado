@@ -10,30 +10,31 @@ import Icon from '../Icon'
 import PetIcon from '../PetIcon'
 import RewardIcon from '../RewardIcon'
 import StrokeText from '../StrokeText'
-import { ChunkyButton, Price } from '../hud/parts'
+import { AlertBadge, ChunkyButton, Price } from '../hud/parts'
 import { GRADIENTS, u } from '../hud/style'
+import { useStoreAlert } from '../hud/useStoreAlert'
 import Panel from './Panel'
 
 const SECTIONS = [
-  { title: 'Passes', items: ['healthX2', 'winsX2', 'autoRoll'] },
-  { title: 'Training Pads', items: ['padVeryOp', 'padBest'] },
+  { title: 'Passes', items: ['healthX2', 'winsX2', 'bigStorm'] },
+  { title: 'Storm Zones', items: ['padVeryOp', 'padBest'] },
   { title: 'Specials', items: ['sphinx'] },
 ]
 
 const ICONS = {
-  healthX2: 'heart',
+  healthX2: 'bolt',
   winsX2: 'trophy',
-  autoRoll: 'tire',
+  bigStorm: 'tornado',
   padVeryOp: 'portal',
   padBest: 'portal',
 }
 
 const BLURBS = {
   healthX2: 'Double every Power gain, forever',
-  winsX2: 'Double the Wins from every launch, forever',
-  autoRoll: 'Stretches and launches you from the Launch Pad',
-  padVeryOp: 'Unlocks the x40 Diamond Pad',
-  padBest: 'Unlocks the x100 Galaxy Pad',
+  winsX2: 'Double every Win, forever',
+  bigStorm: '+25% tornado size, forever',
+  padVeryOp: 'Unlocks the x40 Hyper Zone',
+  padBest: 'Unlocks the x100 Cosmic Zone',
   sphinx: `Limited: x${formatNumber(PETS.sphinx.mult)} Power pet`,
 }
 
@@ -71,6 +72,31 @@ function SectionTitle({ children }) {
 }
 
 const GRID = { gridTemplateColumns: `repeat(auto-fill, minmax(${u(200)}, 1fr))`, gap: u(12) }
+
+const SHOPS = [
+  { panel: 'types', icon: 'tornado', label: 'Tornadoes', alert: 'typeAlert', gradient: 'linear-gradient(180deg, #fff2a8 0%, #ffc21f 50%, #f08a0a 100%)' },
+  { panel: 'upgrades', icon: 'upgrade', label: 'Upgrades', alert: 'upgradeAlert', gradient: 'linear-gradient(180deg, #b4efff 0%, #4cb8ff 50%, #2477e8 100%)' },
+  { panel: 'pets', icon: 'pets', label: 'Pets', alert: 'petAlert', gradient: 'linear-gradient(180deg, #ffd99a 0%, #ffa53a 50%, #f07a12 100%)' },
+]
+
+/** The Store's own shops, up top: Tornadoes, Upgrades and Pets (each opens its panel). */
+function ShopTiles() {
+  const openPanel = useGame((s) => s.openPanel)
+  const alerts = useStoreAlert()
+  return (
+    <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: u(16) }}>
+      {SHOPS.map((shop) => (
+        <ChunkyButton key={shop.panel} gradient={shop.gradient} onClick={() => openPanel(shop.panel)} radius={16} className="flex-col" style={{ height: u(170) }}>
+          <Icon name={shop.icon} size={u(100)} />
+          <span style={{ fontSize: u(36), marginTop: u(-6) }}>
+            <StrokeText stroke={u(7)}>{shop.label}</StrokeText>
+          </span>
+          {alerts[shop.alert] && <AlertBadge size={44} style={{ top: u(-12), right: u(-12) }} />}
+        </ChunkyButton>
+      ))}
+    </div>
+  )
+}
 
 /**
  * Boxity Gems: real-currency extras, priced by Boxity's catalog (the game only names
@@ -158,13 +184,17 @@ function FreeSection() {
   )
 }
 
-/** Everything Wins can buy besides balls, eggs and Health packs, grouped, plus Gems and free rewards. */
+/**
+ * The Store: its Tornadoes, Upgrades and Pets shops up top, then the passes, Storm Zones
+ * and specials Wins can buy, Gems and free rewards.
+ */
 export function StorePanel() {
   const passes = useGame((s) => s.profile.passes)
   const wins = useGame((s) => s.profile.wins)
   return (
     <Panel title="STORE" width={1080}>
       <div className="flex flex-col" style={{ gap: u(18) }}>
+        <ShopTiles />
         <FreeSection />
         {SECTIONS.map((section) => (
           <div key={section.title}>

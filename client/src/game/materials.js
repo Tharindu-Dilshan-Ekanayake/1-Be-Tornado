@@ -1,4 +1,4 @@
-import { Color, MeshLambertMaterial } from 'three'
+import { Color, MeshLambertMaterial, Vector4 } from 'three'
 
 /**
  * The toy-brick look, done in the shader instead of with textures.
@@ -58,14 +58,34 @@ export const toyTime = { value: 0 }
 /** Cap colour for STYLE.TERRAIN blocks; the instance colour is the dirt underneath. */
 export const GRASS_COLOR = new Color('#4fd93a')
 
+/**
+ * Added to a box's style id to make it sway in your tornado's wind (city objects only):
+ * the shader takes it off again before drawing the pattern.
+ */
+export const STYLE_SWAY = 32
+
+/**
+ * Your tornado's wind, for the sway: (x, z, reach, strength 0-1). cityState writes it once
+ * a frame; strength is 0 outside the cities.
+ */
+export const stormWind = { value: new Vector4(0, 0, 0, 0) }
+
 const vertexHead = /* glsl */ `
   attribute float aStyle;
+  uniform vec4 uStorm;
+  uniform float uTime;
   varying vec3 vToyPos;
   varying vec3 vToyNormal;
   varying float vToyStyle;
   varying float vToyTop;
 `
 
+/*
+ * Everything near your tornado that it can tear up leans in towards the funnel and shakes,
+ * harder the closer it is: a shear in world space (so an object's boxes bend together),
+ * stronger the higher up a point is, with a fast shudder over it. The pattern is drawn
+ * from the unswayed position, so it stays put on the surface.
+ */
 const vertexBody = /* glsl */ `
   vec4 toyWorld = vec4(transformed, 1.0);
   vec3 toyN = objectNormal;
@@ -79,7 +99,27 @@ const vertexBody = /* glsl */ `
   vToyPos = toyWorld.xyz;
   vToyNormal = normalize(mat3(modelMatrix) * toyN);
   vToyTop = (modelMatrix * toyTop).y;
-  vToyStyle = aStyle;
+  float toyStyleIn = aStyle;
+  if (toyStyleIn > ${STYLE_SWAY - 1}.5) {
+    toyStyleIn -= ${STYLE_SWAY}.0;
+    if (uStorm.w > 0.0) {
+      vec2 toStorm = uStorm.xy - toyWorld.xz;
+      float d = length(toStorm) + 0.001;
+      float k = uStorm.w * (1.0 - smoothstep(uStorm.z, uStorm.z * 2.0 + 6.0, d)) * smoothstep(0.0, 2.0, d);
+      if (k > 0.002) {
+        float h = max(0.0, toyWorld.y);
+        float hh = h / (1.0 + h * 0.05);
+        vec2 dir = toStorm / d;
+        vec2 swirl = vec2(-dir.y, dir.x);
+        float shudder = sin(uTime * 29.0 + toyWorld.x * 0.9 + toyWorld.z * 0.7) * 0.6 + sin(uTime * 41.0 + toyWorld.z * 1.3) * 0.4;
+        vec4 swayed = toyWorld;
+        swayed.xz += (dir * (0.16 + 0.08 * shudder) + swirl * 0.06) * hh * k;
+        mvPosition = viewMatrix * swayed;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    }
+  }
+  vToyStyle = toyStyleIn;
 `
 
 const fragmentHead = /* glsl */ `
@@ -257,6 +297,7 @@ export function createToyMaterial({
     shader.uniforms.uStudScale = { value: studScale }
     shader.uniforms.uTime = toyTime
     shader.uniforms.uGrass = { value: GRASS_COLOR }
+    shader.uniforms.uStorm = stormWind
     material.userData.shader = shader
 
     shader.vertexShader = shader.vertexShader
@@ -267,7 +308,7 @@ export function createToyMaterial({
       .replace('#include <color_fragment>', `#include <color_fragment>\n${fragmentBody}`)
   }
   // The stud scale is a uniform, so materials differing only in it share a program.
-  material.customProgramCacheKey = () => 'toy-v2'
+  material.customProgramCacheKey = () => 'toy-v3'
   return material
 }
 

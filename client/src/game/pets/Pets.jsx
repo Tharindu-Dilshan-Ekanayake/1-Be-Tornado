@@ -2,11 +2,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
-import { FREE_REWARD, SPHINX_STAND } from '@shared/world'
+import { FREE_REWARD } from '@shared/world'
 
-import { getGame, useGame } from '../../store/game'
-import { sphinxLabelSpec } from '../labels/lobbyLabels'
-import { updateWorldLabel } from '../labels/registry'
+import { getGame } from '../../store/game'
 import { asToyInstance, createToyInstances } from '../blocks'
 import { sharedMaterials } from '../materials'
 import { runtime } from '../runtime'
@@ -16,12 +14,8 @@ import { petGeometry } from './petModels'
 /** Instances per species: your three plus seven other players' worth. */
 const PER_SPECIES = 24
 const PET_SCALE = 0.95
-/** Formation slots behind the owner, in owner space (x right, z forward). */
-const SLOTS = [
-  [-1.5, -1.3],
-  [1.5, -1.3],
-  [0, -2.5],
-]
+/** Three pets ride round the edge of your funnel, a third of a turn apart. */
+const SLOTS = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3]
 
 const _m = new Matrix4()
 const _q = new Quaternion()
@@ -117,8 +111,6 @@ export function Pets() {
     // --- Your pets ----------------------------------------------------------------
     const { profile } = getGame()
     const player = runtime.player
-    const sin = Math.sin(player.yaw)
-    const cos = Math.cos(player.yaw)
     let slot = 0
     for (const uid of profile.equippedPets) {
       if (slot >= followers.length) break
@@ -131,9 +123,10 @@ export function Pets() {
       }
       if (!pet) continue
       const f = followers[slot]
-      const [sx, sz] = SLOTS[slot]
-      // Owner space -> world: right = (-cos, sin), forward = (sin, cos).
-      _target.set(player.position.x - cos * sx + sin * sz, player.position.y, player.position.z + sin * sx + cos * sz)
+      // Round the funnel's foot, just outside it, circling with the wind.
+      const a = SLOTS[slot] + t * 0.9
+      const ring = runtime.tornado.radius + 1.2
+      _target.set(player.position.x + Math.cos(a) * ring, player.position.y, player.position.z + Math.sin(a) * ring)
       if (!f.placed) {
         f.position.copy(_target)
         f.placed = true
@@ -162,21 +155,6 @@ export function Pets() {
   })
 
   return <group ref={groupRef} />
-}
-
-/** The limited Sphinx, big and slowly turning on its showcase plinth. */
-export function SphinxShowcase() {
-  const ref = useRef(null)
-  const stock = useGame((s) => s.sphinxStock)
-  useEffect(() => {
-    updateWorldLabel('sphinx', sphinxLabelSpec(stock))
-  }, [stock])
-  useFrame((state) => {
-    if (ref.current) ref.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.6
-  })
-  const mesh = useMemo(() => asToyInstance(petGeometry('sphinx'), sharedMaterials().toy), [])
-  useEffect(() => () => mesh.dispose(), [mesh])
-  return <primitive ref={ref} object={mesh} position={[SPHINX_STAND.x, 1.7, SPHINX_STAND.z]} scale={3.2} castShadow />
 }
 
 export default Pets

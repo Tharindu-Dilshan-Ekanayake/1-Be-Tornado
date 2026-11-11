@@ -1,33 +1,71 @@
-import { rebirthMultiplier, TUTORIAL } from '@shared/balance'
-import { formatDistance, formatNumber } from '@shared/format'
-import { isMaxLevel, nextTire, zoneIndexAt } from '@shared/logic'
+import { useEffect, useState } from 'react'
 
-import { zones } from '../../game/worldLook'
+import { STAGES, STREAK_WINDOW, TUTORIAL } from '@shared/balance'
+import { payStep } from '@shared/cities'
+import { formatNumber } from '@shared/format'
 
 import { useGame } from '../../store/game'
+import Icon from '../Icon'
 import StrokeText from '../StrokeText'
 import { u } from './style'
 
 const BANNER_GRADIENT = 'linear-gradient(180deg, #fff6a8 0%, #ffd52a 45%, #ffa000 100%)'
 const PANEL_GRADIENT = 'linear-gradient(180deg, #ffe45c 0%, #ffc21f 55%, #ff9a12 100%)'
+const TITLE = 'linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #dfe7f0 100%)'
 
 /**
- * The tutorial for brand-new players: run, kick, buy a ball - then it's gone for good.
- * A small strip, "1/3" and the step with its progress ("(16/30)"), so the world stays in
- * view; the 3D arrows (TutorialArrows) show where to go.
+ * In a city: how close you are to its next Wins - "STAGE 1 [DESTROY 12 MORE] +3" - a slim
+ * bar filling up as you destroy things (every payStep of them pays its Wins). Nothing in
+ * the lobby: the guide and the arrows say what to do there.
  */
+function CityMeter() {
+  const stage = useGame((s) => s.zone.stage)
+  const unlocked = useGame((s) => s.profile.unlocked)
+  const done = useGame((s) => (s.zone.stage >= 0 ? (s.rounds[s.zone.stage] ?? 0) : 0))
+  if (stage < 0 || stage > unlocked) return null
+  const step = payStep(stage)
+  const left = Math.max(0, step - done)
+  return (
+    <div
+      className="flex items-center"
+      style={{ gap: u(12), padding: `${u(4)} ${u(16)} ${u(4)} ${u(14)}`, borderRadius: u(26), border: `${u(4)} solid #111`, background: 'rgba(16,20,36,0.8)' }}
+    >
+      <span style={{ fontSize: u(26) }}>
+        <StrokeText stroke={u(6)} gradient={TITLE}>
+          STAGE {stage + 1}
+        </StrokeText>
+      </span>
+      <div className="relative overflow-hidden" style={{ width: u(270), height: u(28), borderRadius: u(14), border: `${u(3)} solid #111`, background: '#2a2f3a' }}>
+        <div
+          className="absolute inset-0 origin-left"
+          style={{ transform: `scaleX(${Math.min(1, done / step)})`, transition: 'transform 200ms ease-out', background: 'linear-gradient(180deg, #ffb08a 0%, #ff5a2a 55%, #c81f0a 100%)' }}
+        />
+        <div className="absolute inset-0 flex items-center justify-center" style={{ fontSize: u(19) }}>
+          <StrokeText stroke={u(4)}>{`DESTROY ${left} MORE`}</StrokeText>
+        </div>
+      </div>
+      <span className="flex items-center" style={{ gap: u(4), fontSize: u(28) }}>
+        <Icon name="trophy" size={u(32)} />
+        <StrokeText stroke={u(6)} gradient={BANNER_GRADIENT}>
+          +{formatNumber(STAGES[stage].wins)}
+        </StrokeText>
+      </span>
+    </div>
+  )
+}
+
+/** The tutorial for brand-new players, as a small strip: "2/3 Hold your tornado over..." */
 function TutorialBanner({ step }) {
   const current = TUTORIAL[step]
   const health = useGame((s) => s.profile.health)
-  const onZone = useGame((s) => s.zone.rollZone)
   let text = current.text
   if (current.health) text += ` (${formatNumber(Math.min(health, current.health))}/${formatNumber(current.health)})`
-  if (current.event === 'roll' && onZone) text = 'Pull BACK to stretch, then let go of the stick!'
   return (
     <div
       className="flex items-center"
       style={{
         gap: u(14),
+        marginTop: u(6),
         padding: `${u(6)} ${u(22)} ${u(6)} ${u(8)}`,
         borderRadius: u(30),
         border: `${u(4)} solid #111`,
@@ -35,15 +73,12 @@ function TutorialBanner({ step }) {
         boxShadow: `0 ${u(4)} 0 rgba(0,0,0,0.3), inset 0 ${u(4)} 0 rgba(255,255,255,0.45)`,
       }}
     >
-      <span
-        className="flex items-center justify-center"
-        style={{ minWidth: u(64), height: u(44), borderRadius: u(22), background: '#111', fontSize: u(26) }}
-      >
+      <span className="flex items-center justify-center" style={{ minWidth: u(64), height: u(44), borderRadius: u(22), background: '#111', fontSize: u(26) }}>
         <StrokeText stroke={u(5)} gradient={BANNER_GRADIENT}>
           {step + 1}/{TUTORIAL.length}
         </StrokeText>
       </span>
-      <span style={{ fontSize: u(34) }}>
+      <span style={{ fontSize: u(32) }}>
         <StrokeText stroke={u(7)} style={{ whiteSpace: 'normal' }}>
           {text}
         </StrokeText>
@@ -52,72 +87,54 @@ function TutorialBanner({ step }) {
   )
 }
 
-/**
- * The next goal, always in sight once the tutorial's done - something close enough to
- * chase: rebirth when you're at max level, else the next pair of arms and how far your
- * Wins are from it, else the next stage down the runway past your best flight. A tap
- * opens what it's about.
- */
-function GoalBanner() {
-  const profile = useGame((s) => s.profile)
-  const pending = useGame((s) => s.pendingWins)
-  const openPanel = useGame((s) => s.openPanel)
-  let text
-  let progress = null
-  let panel = null
-  if (isMaxLevel(profile)) {
-    text = `REBIRTH READY! Rebirth for x${rebirthMultiplier(profile.rebirths + 1)} Power`
-    panel = 'rebirth'
-  } else {
-    const next = nextTire(profile)
-    if (next) {
-      const wins = Math.max(0, profile.wins - pending)
-      text = wins >= next.cost ? `You can buy ${next.name}! Visit the Arm Shop` : `Next arms: ${next.name}`
-      progress = Math.min(1, wins / Math.max(1, next.cost))
-      if (wins < next.cost) text += ` (${formatNumber(wins)}/${formatNumber(next.cost)} Wins)`
-    } else {
-      const stages = zones()
-      const nextStage = stages[Math.min(stages.length - 1, zoneIndexAt(profile.stats.bestDistance) + 1)]
-      text = `Next stage: ${nextStage.name} at ${formatDistance(nextStage.start)} (best ${formatDistance(profile.stats.bestDistance)})`
-      progress = Math.min(1, profile.stats.bestDistance / Math.max(1, nextStage.start))
-    }
-  }
+/** "x20 STREAK" with a bar draining until the streak ends, and a word for how well it's going. */
+function StreakMeter() {
+  const streak = useGame((s) => s.streak)
+  const [now, setNow] = useState(0)
+  useEffect(() => {
+    if (streak.count < 3) return undefined
+    const update = () => setNow(performance.now())
+    update()
+    const id = setInterval(update, 120)
+    return () => clearInterval(id)
+  }, [streak])
+  const left = now ? 1 - (now - streak.at) / (STREAK_WINDOW * 1000) : 1
+  if (streak.count < 3 || left <= 0) return null
+  const word = streak.count >= 50 ? 'UNSTOPPABLE!' : streak.count >= 30 ? 'AMAZING!' : streak.count >= 15 ? 'GREAT!' : 'NICE!'
   return (
-    <button
-      type="button"
-      onClick={panel ? () => openPanel(panel) : undefined}
-      className={`${panel ? 'pp-btn pointer-events-auto' : ''} relative flex flex-col items-center overflow-hidden`}
-      style={{
-        padding: `${u(6)} ${u(24)} ${u(progress === null ? 6 : 14)}`,
-        borderRadius: u(30),
-        border: `${u(4)} solid #111`,
-        background: panel ? 'linear-gradient(180deg, #b4efff 0%, #4cb8ff 50%, #2477e8 100%)' : PANEL_GRADIENT,
-        boxShadow: `0 ${u(4)} 0 rgba(0,0,0,0.3), inset 0 ${u(4)} 0 rgba(255,255,255,0.45)`,
-      }}
-    >
-      <span style={{ fontSize: u(32) }}>
-        <StrokeText stroke={u(7)} style={{ whiteSpace: 'normal' }}>
-          {text}
+    <div key={Math.floor(streak.count / 5)} className="pp-bump flex flex-col items-center" style={{ marginTop: u(6) }}>
+      <span style={{ fontSize: u(64), lineHeight: 1 }}>
+        <StrokeText stroke={u(12)} gradient={BANNER_GRADIENT}>
+          x{streak.count}
         </StrokeText>
       </span>
-      {progress !== null && (
-        <span className="absolute bottom-0 left-0 right-0" style={{ height: u(8), background: 'rgba(0,0,0,0.35)' }}>
-          <span className="block h-full origin-left" style={{ transform: `scaleX(${progress})`, background: '#3fe05a' }} />
-        </span>
-      )}
-    </button>
+      <div className="relative overflow-hidden" style={{ width: u(220), height: u(26), borderRadius: u(13), border: `${u(4)} solid #111`, background: '#2a1f4a' }}>
+        <div className="absolute inset-0 origin-left" style={{ transform: `scaleX(${left})`, background: 'linear-gradient(90deg, #ffd21f, #ff7a1e)' }} />
+        <div className="absolute inset-0 flex items-center justify-center" style={{ fontSize: u(18) }}>
+          <StrokeText stroke={u(4)}>STREAK</StrokeText>
+        </div>
+      </div>
+      <span style={{ fontSize: u(34) }}>
+        <StrokeText stroke={u(7)} gradient={BANNER_GRADIENT}>
+          {word}
+        </StrokeText>
+      </span>
+    </div>
   )
 }
 
 /**
- * Top centre: the tutorial while there is one, then the next goal (GoalBanner). (The
- * playtime gift lives on the left menu: GiftTile.)
+ * Top centre: during the tutorial, the city's next-Wins bar and the current step; after
+ * it, only your streak (the screen stays clear).
  */
 export function TopCenter() {
   const step = useGame((s) => s.profile.tutorialStep)
+  const guiding = Boolean(TUTORIAL[step])
   return (
-    <div className="hud-topcenter pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ width: 'max-content', maxWidth: '90vw' }}>
-      {TUTORIAL[step] ? <TutorialBanner step={step} /> : <GoalBanner />}
+    <div className="hud-topcenter pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ width: 'max-content', maxWidth: '92vw' }}>
+      {guiding && <CityMeter />}
+      {guiding && <TutorialBanner step={step} />}
+      <StreakMeter />
     </div>
   )
 }

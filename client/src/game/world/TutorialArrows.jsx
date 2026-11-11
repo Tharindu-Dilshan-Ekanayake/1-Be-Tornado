@@ -3,24 +3,57 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
 import { TUTORIAL } from '@shared/balance'
-import { EGG_STANDS, groundHeightAt, PAD_RADIUS, PAD_X, padCenterZ, ROLL_ZONE, TIRE_STANDS } from '@shared/world'
+import { stageLayout } from '@shared/cities'
+import { gateZ, LOBBY, PAD_X, padCenterZ, TORNADO_STANDS } from '@shared/world'
 
 import { getGame } from '../../store/game'
 import { createToyInstances, PropBuilder } from '../blocks'
+import { isPresent } from '../city/cityState'
 import { sharedMaterials, STYLE } from '../materials'
 import { runtime } from '../runtime'
 
-const MAX_CHEVRONS = 14
-const SPACING = 2.4
+const MAX_CHEVRONS = 16
+const SPACING = 3
 /** Stop drawing arrows this close to the goal. */
 const ARRIVED = 3.5
 
-/** Ground point each tutorial step leads to. */
+/** The nearest thing still standing in the first city, looked up a few times a second. */
+const near = { at: 0, x: 0, z: 0, found: false }
+function nearestStanding(p) {
+  const now = performance.now()
+  if (now - near.at > 400) {
+    near.at = now
+    near.found = false
+    let best = Infinity
+    for (const o of stageLayout(0).objects) {
+      if (!isPresent(o.id)) continue
+      const d = (o.x - p.x) ** 2 + (o.z - p.z) ** 2
+      if (d < best) {
+        best = d
+        near.x = o.x
+        near.z = o.z
+        near.found = true
+      }
+    }
+  }
+  return near.found ? { x: near.x, z: near.z, reach: 3 } : null
+}
+
+/** The lobby, from wherever you are: back over the bridge to its middle. */
+const toLobby = (p) => (p.z < LOBBY.minZ - 2 ? { x: 0, z: LOBBY.minZ + 10, reach: 8 } : null)
+
+/** Ground point each tutorial step leads to (null: none from here). */
 const TARGETS = {
-  roll: { x: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 },
-  pad0: { x: PAD_X, z: padCenterZ(0), reach: PAD_RADIUS - 0.5 },
-  tires: { x: TIRE_STANDS[1].x, z: TIRE_STANDS[1].z },
-  eggs: { x: EGG_STANDS[0].x, z: EGG_STANDS[0].z - 3.5 },
+  // The first Storm Zone, in the lobby.
+  pad: (p) => toLobby(p) ?? { x: PAD_X, z: padCenterZ(0), reach: 2.5 },
+  // Through the lobby's gate and over the bridge into the first city.
+  gate: (p) => (p.z > gateZ(0) ? { x: 0, z: gateZ(0) - 14, reach: 10 } : null),
+  // Into the first city, then the nearest thing still standing in it.
+  stuff: (p) => (p.z > gateZ(0) ? { x: 0, z: gateZ(0) - 14, reach: 10 } : nearestStanding(p)),
+  // Back to the lobby.
+  lobby: toLobby,
+  // To the Gusty Swirl's BUY spot in the lobby's showroom.
+  types: (p) => toLobby(p) ?? { x: TORNADO_STANDS[1].spotX, z: TORNADO_STANDS[1].z, reach: 1.6 },
 }
 
 const _m = new Matrix4()
@@ -60,11 +93,11 @@ export function TutorialArrows() {
   useFrame((state) => {
     const instanced = ref.current
     if (!instanced) return
-    const { profile, roll } = getGame()
+    const { profile } = getGame()
     const step = TUTORIAL[profile.tutorialStep]
-    const target = step && TARGETS[step.target]
     const player = runtime.player.position
-    if (!target || roll || runtime.camera.mode !== 'follow') {
+    const target = step && TARGETS[step.target]?.(player)
+    if (!target || runtime.camera.mode !== 'follow') {
       instanced.count = 0
       return
     }
@@ -84,13 +117,12 @@ export function TutorialArrows() {
     for (let d = 1.6 + offset; d < dist - 1 && count < MAX_CHEVRONS; d += SPACING) {
       const x = player.x + ux * d
       const z = player.z + uz * d
-      // Over the pads and ball-shop stages, not under them, and well clear of everything
-      // lying on the floor (field lines and decals 0.03-0.04 up, the treadmills' rails 0.2).
-      _p.set(x, groundHeightAt(x, z) + 0.15, z)
+      // Clear of everything lying on the ground (roads, lot markings, plazas up to 0.3).
+      _p.set(x, 0.36, z)
       // Fade in near the player, shrink near the goal - in plan only, so their height
       // above the floor never changes.
       const scale = Math.max(0.01, Math.min(1, (d - 1.2) / 1.5) * Math.min(1, (dist - d) / 2))
-      _s.set(scale, 1, scale)
+      _s.set(scale * 1.7, 1, scale * 1.7)
       instanced.setMatrixAt(count, _m.compose(_p, _q, _s))
       count += 1
     }

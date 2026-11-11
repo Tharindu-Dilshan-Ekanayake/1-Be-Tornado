@@ -1,18 +1,20 @@
 import {
   AD_REWARDS,
   BADGES,
+  BASE_RADIUS,
+  BASE_SPEED,
+  BIG_STORM,
   DAILY_INTERVAL_MS,
   dayNumber,
   DAILY_REWARDS,
   EGGS,
   FREE_REWARD,
   GEM_PRODUCTS,
-  HEALTH_PACKS,
   healthForLevel,
-  hitGrade,
-  hitReach,
   ITEMS,
+  LEVEL_PACKS,
   levelCap,
+  loginMultiplier,
   MAX_EQUIPPED_PETS,
   MAX_PET_INVENTORY,
   OFFLINE_MAX_MS,
@@ -22,30 +24,28 @@ import {
   PETS,
   PLAYTIME_REWARDS,
   RARITIES,
-  REBIRTH_SKIP_ROLLS,
+  REBIRTH_SKIP_PAYS,
   rebirthGift,
   rebirthMultiplier,
-  ROLL_BASE,
-  ROLL_H0,
-  ROLL_RECOVERY,
-  SECRET_STAR,
-  rollDuration,
+  RING_RADIUS,
+  RING_TEAR,
+  TEAR_FASTEST,
+  TEAR_SLOWEST,
+  TOUGH_STEP,
+  ringsFor,
   SHOP,
-  streakMultiplier,
-  STRETCH_REACH,
-  STRETCH_WINS,
-  TIRES,
+  STAGES,
+  streakBonus,
+  SURGE_COOLDOWN,
+  SURGE_RADIUS,
+  TORNADO_HEIGHT,
+  TORNADOES,
   TRAIN_INTERVAL,
-  TROPHY_FIRST,
-  TROPHY_METERS,
-  TROPHY_SPACING,
   TUTORIAL,
-  WALL_MARGIN,
-  WORLD_PORTALS,
-  WORLD_ZONES,
-  ZONES,
-  zonesOf,
+  upgradeCost,
+  UPGRADES,
 } from './balance.js'
+import { KINDS } from './cities.js'
 
 /**
  * Game rules as pure functions over a plain profile object.
@@ -66,12 +66,17 @@ export function createProfile(id, name) {
     v: PROFILE_VERSION,
     id,
     name,
+    /** Power (the template's name). Your level follows from it. */
     health: 0,
     wins: 0,
     rebirths: 0,
     level: 1,
-    equippedTire: 'bicycle',
-    ownedTires: ['bicycle'],
+    equippedTornado: TORNADOES[0].id,
+    ownedTornadoes: [TORNADOES[0].id],
+    /** The furthest city whose gate is open (index into STAGES): open for good. */
+    unlocked: 0,
+    /** Upgrade levels (balance UPGRADES), kept through rebirths. */
+    upgrades: { size: 0, speed: 0, surge: 0 },
     pets: [],
     equippedPets: [],
     nextPetUid: 1,
@@ -82,33 +87,31 @@ export function createProfile(id, name) {
     freeRewardClaimed: false,
     tutorialStep: 0,
     badges: [],
+    /** Every kind of thing (cities KINDS ids) you've ever swallowed: the Index. */
+    index: [],
     stats: {
-      rolls: 0,
+      absorbed: 0,
+      trophies: 0,
+      clears: 0,
+      landmarks: 0,
       trains: 0,
-      bestDistance: 0,
       playtime: 0,
       bestHealth: 0,
       totalWins: 0,
-      wallsBroken: 0,
-      /** Furthest zone ever reached (index into ZONES): its `discover` prize is paid once. */
-      bestZone: 0,
-      /** The same for World 2's stages. */
-      bestZone2: 0,
+      bestStreak: 0,
+      surges: 0,
     },
-    /** The world you're in (index into WORLDS), and whether World 2's portal is open. */
-    world: 0,
-    world2Unlocked: false,
-    /** Secret Stars found, by world id ('world2': Palm Beach's). */
-    secretStars: {},
     lastPad: -1,
     lastSeen: 0,
-    settings: { autoRebirth: false, autoRoll: false },
+    settings: { autoRebirth: false },
     /** Today's quests (engage.js): the day they're for, the three, the bonus chest taken. */
     quests: { day: -1, list: [], bonus: false },
     /** Login streak: the last day played (balance.dayNumber), days in a row, the best run. */
     streak: { day: -1, days: 0, best: 0 },
   }
 }
+
+const whole = (n, max = Infinity) => Math.min(max, Math.max(0, Math.floor(Number(n)) || 0))
 
 /** Fills in anything missing from an older or partial save. Never throws. */
 export function normalizeProfile(raw, id, name) {
@@ -117,13 +120,14 @@ export function normalizeProfile(raw, id, name) {
   const p = { ...base, ...raw, id, name: name || raw.name || base.name }
   p.boosts = { ...base.boosts, ...(raw.boosts || {}) }
   p.stats = { ...base.stats, ...(raw.stats || {}) }
-  p.settings = { ...base.settings, ...(raw.settings || {}) }
+  p.settings = { autoRebirth: raw.settings?.autoRebirth === true }
   p.daily = { ...base.daily, ...(raw.daily || {}) }
+  p.upgrades = Object.fromEntries(Object.entries(UPGRADES).map(([key, u]) => [key, whole(raw.upgrades?.[key], u.max)]))
   const streak = raw.streak && typeof raw.streak === 'object' ? raw.streak : {}
   p.streak = {
     day: Number.isInteger(streak.day) ? streak.day : -1,
-    days: Math.max(0, Math.floor(streak.days) || 0),
-    best: Math.max(0, Math.floor(streak.best) || 0),
+    days: whole(streak.days),
+    best: whole(streak.best),
   }
   const quests = raw.quests && typeof raw.quests === 'object' ? raw.quests : {}
   p.quests = {
@@ -135,27 +139,27 @@ export function normalizeProfile(raw, id, name) {
       : [],
     bonus: quests.bonus === true,
   }
-  p.items = Object.fromEntries(Object.entries(raw.items || {}).filter(([itemId]) => ITEMS[itemId]))
-  p.passes = Object.fromEntries(Object.entries(raw.passes || {}).filter(([productId]) => SHOP[productId]))
+  p.items = Object.fromEntries(Object.entries(raw.items || {}).filter(([itemId, n]) => ITEMS[itemId] && Number.isFinite(n) && n > 0))
+  p.passes = Object.fromEntries(Object.entries(raw.passes || {}).filter(([productId]) => SHOP[productId]?.kind === 'pass'))
   p.health = Number.isFinite(raw.health) ? Math.max(0, raw.health) : 0
   p.wins = Number.isFinite(raw.wins) ? Math.max(0, raw.wins) : 0
-  p.pets = Array.isArray(raw.pets) ? raw.pets.filter((pet) => PETS[pet?.id]) : []
+  p.rebirths = whole(raw.rebirths)
+  p.pets = Array.isArray(raw.pets) ? raw.pets.filter((pet) => PETS[pet?.id] && Number.isInteger(pet.uid)) : []
+  p.nextPetUid = Math.max(whole(raw.nextPetUid), ...p.pets.map((pet) => pet.uid + 1), 1)
   p.equippedPets = Array.isArray(raw.equippedPets)
     ? raw.equippedPets.filter((uid) => p.pets.some((pet) => pet.uid === uid)).slice(0, MAX_EQUIPPED_PETS)
     : []
-  const owned = Array.isArray(raw.ownedTires) ? raw.ownedTires.filter((tireId) => tireIndex(tireId) >= 0) : []
-  p.ownedTires = owned.length ? owned : ['bicycle']
-  if (!p.ownedTires.includes(p.equippedTire)) p.equippedTire = p.ownedTires[0]
-  p.stats.bestZone = Math.min(ZONES.length - 1, Math.max(0, Math.floor(p.stats.bestZone) || 0))
-  p.stats.bestZone2 = Math.min(ZONES.length - 1, Math.max(0, Math.floor(p.stats.bestZone2) || 0))
-  p.world2Unlocked = raw.world2Unlocked === true
-  p.secretStars = { world2: raw.secretStars?.world2 === true }
-  p.world = p.world2Unlocked && raw.world === 1 ? 1 : 0
-  // Levels follow from Health; recompute rather than trust a stored one.
+  const owned = Array.isArray(raw.ownedTornadoes) ? raw.ownedTornadoes.filter((t) => tornadoIndex(t) >= 0) : []
+  p.ownedTornadoes = owned.length ? [...new Set(owned)] : [TORNADOES[0].id]
+  if (!p.ownedTornadoes.includes(p.equippedTornado)) p.equippedTornado = p.ownedTornadoes[0]
+  p.index = Array.isArray(raw.index) ? [...new Set(raw.index.filter((kind) => KINDS[kind]))] : []
+  p.badges = Array.isArray(raw.badges) ? raw.badges.filter((b) => BADGES[b]) : []
+  // Levels follow from Power; recompute rather than trust a stored one. Open gates stay open.
   p.level = levelFor(p.health, p.rebirths)
+  p.unlocked = Math.min(STAGES.length - 1, Math.max(0, whole(raw.unlocked)))
   // The tutorial is for brand-new players only: anyone who has rebirthed is past it.
   if (p.rebirths > 0) p.tutorialStep = TUTORIAL.length
-  p.tutorialStep = Math.min(TUTORIAL.length, Math.max(0, Math.floor(p.tutorialStep) || 0))
+  p.tutorialStep = whole(p.tutorialStep, TUTORIAL.length)
   p.v = PROFILE_VERSION
   return p
 }
@@ -166,21 +170,19 @@ export function createSession(now) {
 
 // --- Lookups ------------------------------------------------------------------------
 
-export const tireIndex = (id) => TIRES.findIndex((t) => t.id === id)
-export const tireById = (id) => TIRES.find((t) => t.id === id) || TIRES[0]
+export const tornadoIndex = (id) => TORNADOES.findIndex((t) => t.id === id)
+export const tornadoById = (id) => TORNADOES.find((t) => t.id === id) || TORNADOES[0]
 
 export function isPadUnlocked(profile, index) {
   const pad = PADS[index]
   if (!pad) return false
-  // A world's own treadmill runs in that world only.
-  if (pad.world !== undefined && (profile.world || 0) !== pad.world) return false
   if (pad.product) return Boolean(profile.passes[pad.product])
   return profile.rebirths >= pad.rebirths
 }
 
 /**
- * Health values are kept to a tenth below a million and whole above, so repeated
- * small gains don't pile up float dust.
+ * Power values are kept to a tenth below a million and whole above, so repeated small
+ * gains don't pile up float dust.
  */
 export const tidy = (value) => (value < 1e6 ? Math.round(value * 10) / 10 : Math.round(value))
 
@@ -218,6 +220,43 @@ export function rebirthProgress(profile) {
   return Math.max(0, Math.min(1, (profile.level - 1 + levelProgress(profile)) / Math.max(1, cap - 1)))
 }
 
+// --- Your tornado -------------------------------------------------------------------
+
+/** The funnel's radius at its base (metres): rings from your level, the size upgrade, Big Storm. */
+export function tornadoRadius(profile) {
+  const rings = ringsFor(profile.level)
+  const upgrade = 1 + UPGRADES.size.step * (profile.upgrades?.size || 0)
+  return (BASE_RADIUS + RING_RADIUS * (rings - 1)) * upgrade * (profile.passes?.bigStorm ? BIG_STORM : 1)
+}
+export const tornadoHeight = (profile) => tornadoRadius(profile) * TORNADO_HEIGHT
+
+/** How fast your tornado moves (m/s). */
+export const tornadoSpeed = (profile) => BASE_SPEED * (1 + UPGRADES.speed.step * (profile.upgrades?.speed || 0))
+
+/** Seconds between Surges, and how far one reaches (times your radius). */
+export const surgeCooldown = (profile) => Math.max(8, SURGE_COOLDOWN - (profile.upgrades?.surge || 0))
+export const surgeReach = (profile) => SURGE_RADIUS * (1 + 0.08 * (profile.upgrades?.surge || 0))
+
+/** How much your rings speed up tearing (each ring past the first, RING_TEAR more). */
+export const tearRate = (profile) => 1 + RING_TEAR * (ringsFor(profile.level) - 1)
+
+const TORNADO_POWER = Object.fromEntries(TORNADOES.map((t) => [t.id, t.power]))
+/** How strong your tornado is at tearing things up, in levels: your level plus its type's. */
+export const tearStrength = (profile) => profile.level + Math.log2(TORNADO_POWER[profile.equippedTornado] || 1)
+
+/**
+ * How fast your funnel tears up object `o` (seconds of its hp per second held over it):
+ * twice as fast for every TOUGH_STEP levels stronger you are than it's tough, and faster
+ * with every ring. Anything can be torn up by anyone; it just takes a weak tornado longer.
+ */
+export function tearSpeed(profile, o) {
+  const k = Math.pow(2, (tearStrength(profile) - o.level) / TOUGH_STEP)
+  return tearRate(profile) * Math.min(TEAR_FASTEST, Math.max(TEAR_SLOWEST, k))
+}
+
+/** Seconds your funnel has to be over `o` to tear it up. */
+export const tearTime = (profile, o) => o.hp / tearSpeed(profile, o)
+
 // --- Multipliers --------------------------------------------------------------------
 
 /** Equipped pets stack additively: x3 and x2 together make x4, not x6. */
@@ -232,16 +271,16 @@ export function petMultiplier(profile) {
 
 export const isBoostActive = (profile, kind, now) => (profile.boosts[kind] || 0) > now
 
-/** The x2 Health pass and potion; they stack. */
+/** The x2 Power pass and potion; they stack. */
 export function healthBoostMultiplier(profile, now) {
   return (profile.passes.healthX2 ? 2 : 1) * (isBoostActive(profile, 'health', now) ? 2 : 1)
 }
 
 /**
- * Days in a row you've played, as of `now`: your streak while it's alive (played today
- * or yesterday), else 0. (engage.applyStreak counts the days.)
+ * Days in a row you've played, as of `now`: your login streak while it's alive (played
+ * today or yesterday), else 0. (engage.applyStreak counts the days.)
  */
-export function streakDays(profile, now) {
+export function loginDays(profile, now) {
   const s = profile.streak
   if (!s || s.days <= 0) return 0
   return dayNumber(now) - s.day <= 1 ? s.days : 0
@@ -249,36 +288,36 @@ export function streakDays(profile, now) {
 
 /** The x2 Wins pass and potion (they stack), and your login streak's bonus. */
 export function winsMultiplier(profile, now) {
-  return (profile.passes.winsX2 ? 2 : 1) * (isBoostActive(profile, 'wins', now) ? 2 : 1) * streakMultiplier(streakDays(profile, now))
+  return (profile.passes.winsX2 ? 2 : 1) * (isBoostActive(profile, 'wins', now) ? 2 : 1) * loginMultiplier(loginDays(profile, now))
 }
 
-/** Palm Beach's Secret Star, once found: x2 Power for good, in every world. */
-export const starMultiplier = (profile) => (profile.secretStars?.world2 ? SECRET_STAR.power : 1)
-
-/** Everything that multiplies a Health gain except the tire and where you earn it. */
+/** Everything that multiplies a Power gain except the tornado and what earned it. */
 export function gainMultiplier(profile, now) {
-  return rebirthMultiplier(profile.rebirths) * petMultiplier(profile) * healthBoostMultiplier(profile, now) * starMultiplier(profile)
+  return rebirthMultiplier(profile.rebirths) * petMultiplier(profile) * healthBoostMultiplier(profile, now)
 }
 
-/** Health from one gain anywhere but a pad: your tire's power, multiplied. */
-export const baseGain = (profile, now) => tidy(tireById(profile.equippedTire).power * gainMultiplier(profile, now))
+/** Your tornado's power times everything else: what one unit of Power is worth to you. */
+export const powerMultiplier = (profile, now) => tornadoById(profile.equippedTornado).power * gainMultiplier(profile, now)
 
-/** Health from one training step on pad `index`. */
+/** Power from one gain while moving around (WALK_STEP metres). */
+export const baseGain = (profile, now) => tidy(powerMultiplier(profile, now))
+
+/** Power from one tick in Storm Zone `index`. */
 export function padGain(profile, index, now) {
   const pad = PADS[index]
   if (!pad) return 0
-  return tidy(tireById(profile.equippedTire).power * pad.mult * gainMultiplier(profile, now))
+  return tidy(powerMultiplier(profile, now) * pad.mult)
 }
 
-// --- Training, levels, rebirth ------------------------------------------------------
+// --- Power, levels, cities, rebirth --------------------------------------------------
 
 /**
- * Banks a natural gain (pad, rolling or walking) and the levels it reaches. Once you're
- * at max level natural gains stop: rebirth to keep going. Returns what was really added.
+ * Banks a gain and the levels it reaches. Once you're at max level gains stop: rebirth
+ * to keep going. Returns what was really added.
  */
 function addHealth(profile, gain) {
   const cap = levelCap(profile.rebirths)
-  if (profile.level >= cap) return { gain: 0, leveledUp: false, maxed: true }
+  if (profile.level >= cap) return { gain: 0, leveledUp: false, levels: 0, maxed: true }
   // Stops exactly on max level rather than overshooting it.
   const room = Math.max(0, healthForLevel(cap) - profile.health)
   const added = tidy(Math.min(gain, room))
@@ -290,21 +329,65 @@ function addHealth(profile, gain) {
   return { gain: added, leveledUp: profile.level > before, levels: profile.level - before, maxed: profile.level >= cap }
 }
 
+/** Banks Power you've earned (`raw`, before multipliers) and opens any gate your level now reaches. */
+export function gainPower(profile, raw, now) {
+  const result = addHealth(profile, raw * powerMultiplier(profile, now))
+  result.unlocked = result.leveledUp ? unlockStages(profile, now) : []
+  return result
+}
+
 export function applyTrain(profile, index, now) {
-  if (!isPadUnlocked(profile, index)) return { ok: false, error: 'Bar locked' }
+  if (!isPadUnlocked(profile, index)) return { ok: false, error: 'Zone locked' }
   profile.lastPad = index
-  return { ok: true, ...addHealth(profile, padGain(profile, index, now)) }
+  return { ok: true, ...gainPower(profile, PADS[index].mult, now) }
 }
 
-/** One tick of Health while your tire rolls. */
-export function applyRollTick(profile, now) {
-  return { ok: true, ...addHealth(profile, baseGain(profile, now)) }
+/** One WALK_STEP's worth of moving around. */
+export const applyWalkStep = (profile, now) => ({ ok: true, ...gainPower(profile, 1, now) })
+
+/**
+ * Opens every city gate your level reaches (one after another, never skipping one).
+ * Returns the indices opened.
+ */
+export function unlockStages(profile) {
+  const opened = []
+  while (profile.unlocked + 1 < STAGES.length && profile.level >= STAGES[profile.unlocked + 1].level) {
+    profile.unlocked += 1
+    opened.push({ index: profile.unlocked, wins: 0 })
+  }
+  return opened
 }
 
-/** One step's worth of walking round the lobby: the same gain as a roll tick. */
-export const applyWalkStep = applyRollTick
+/**
+ * `count` more PAY_SHARE's of city `stage` destroyed: its Wins for each, times your Wins
+ * boosts and `crowd` (the friends bonus). Returns the Wins paid.
+ */
+export function payCity(profile, stage, count, now, crowd = 1) {
+  const wins = Math.max(1, Math.round(STAGES[stage].wins * count * winsMultiplier(profile, now) * crowd))
+  profile.wins += wins
+  profile.stats.totalWins += wins
+  return wins
+}
 
-/** Rebirth: +1 rebirth; Health and levels reset (Wins, tires and pets stay). */
+/**
+ * Something swallowed: object `o` (a cities layout object). Power for it (times `streak`'s
+ * bonus), and the Index if it's a new kind. (Wins come from clearing whole cities:
+ * payCity.) Returns { gain, wins: 0, newKind, ... }.
+ */
+export function absorbObject(profile, o, now, { streak = 0 } = {}) {
+  const power = gainPower(profile, o.power * streakBonus(streak), now)
+  profile.stats.absorbed += 1
+  if (o.size === 'landmark') profile.stats.landmarks += 1
+  else if (o.size === 'trophy') profile.stats.trophies += 1
+  let newKind = null
+  if (KINDS[o.kind] && !profile.index.includes(o.kind)) {
+    profile.index.push(o.kind)
+    newKind = o.kind
+  }
+  return { ...power, wins: 0, newKind }
+}
+
+/** Rebirth: +1 rebirth; Power and levels reset (Wins, tornadoes, upgrades, pets and open gates stay). */
 export function applyRebirth(profile) {
   if (!isMaxLevel(profile)) return { ok: false, error: `Reach level ${levelCap(profile.rebirths)} first!` }
   profile.rebirths += 1
@@ -316,158 +399,117 @@ export function applyRebirth(profile) {
   return { ok: true, rebirths: profile.rebirths, gift }
 }
 
-// --- Rolling ------------------------------------------------------------------------
+/** What your best open city pays (per PAY_SHARE of it destroyed): the unit rewards and prices grow by. */
+export const payWorth = (profile) => STAGES[Math.min(STAGES.length - 1, Math.max(0, profile.unlocked || 0))].wins
 
-/** How far `health` rolls on open ground, before any wall gets in the way. */
-/** Health that just reaches each gate on open ground (its wall needs WALL_MARGIN times it). */
-const GATE_REACH = ZONES.map((z) => z.wall / WALL_MARGIN)
+/** `n` city pays' worth of Wins: rewards that grow with you. */
+export const winsForPays = (profile, n) => Math.max(10, Math.round(payWorth(profile) * n))
 
-/**
- * How far `health` rolls on open ground, before any wall gets in the way: up to the
- * first gate along a gentle curve from ROLL_BASE, then from each gate's mark to the next
- * as Health climbs from one gate's reach to the next (in log terms), and past the last
- * gate at the last stage's pace.
- */
-export function rollReach(health) {
-  const h = Math.max(0, health)
-  const first = GATE_REACH[1]
-  if (h <= first) return ROLL_BASE + ((ZONES[1].start - ROLL_BASE) * Math.log1p(h / ROLL_H0)) / Math.log1p(first / ROLL_H0)
-  let i = 1
-  while (i + 1 < ZONES.length && h >= GATE_REACH[i + 1]) i += 1
-  // Past the last gate, keep going at the last stage's pace.
-  const a = i + 1 < ZONES.length ? i : i - 1
-  const span = ZONES[a + 1].start - ZONES[a].start
-  return ZONES[i].start + (span * Math.log(h / GATE_REACH[i])) / Math.log(GATE_REACH[a + 1] / GATE_REACH[a])
-}
+/** Wins to rebirth now without reaching max level first. */
+export const rebirthSkipPrice = (profile) => niceRound(Math.max(20, payWorth(profile) * REBIRTH_SKIP_PAYS))
 
-export function zoneIndexAt(meter) {
-  for (let i = ZONES.length - 1; i >= 0; i -= 1) {
-    if (meter >= ZONES[i].start) return i
-  }
-  return 0
+export function skipRebirth(profile) {
+  if (isMaxLevel(profile)) return applyRebirth(profile)
+  const price = rebirthSkipPrice(profile)
+  if (profile.wins < price) return { ok: false, error: 'Not enough Wins!' }
+  profile.wins -= price
+  profile.level = levelCap(profile.rebirths)
+  return applyRebirth(profile)
 }
 
 /**
- * Where a kick with `health` (Power) lands: its full reach - nothing on the field stops
- * it. `broken` is how many stages it flew into past the first (the name stayed from the
- * template's walls); `blocked` is always -1.
+ * The level packs as they stand for you now: `[{ levels, amount, price }]`. `amount` is
+ * the Power to go up `levels` levels from here (never past max level); `price` follows
+ * what your best city pays.
  */
-export function rollOutcome(health, reachFactor = 1) {
-  const reach = rollReach(health) * reachFactor
-  let broken = 0
-  for (let i = 1; i < ZONES.length && ZONES[i].start <= reach; i += 1) broken += 1
-  return { distance: reach, blocked: -1, broken, reach }
+export function levelPacks(profile) {
+  const cap = levelCap(profile.rebirths)
+  return LEVEL_PACKS.map((pack) => {
+    const target = Math.min(cap, profile.level + pack.levels)
+    return {
+      levels: pack.levels,
+      amount: Math.max(0, tidy(healthForLevel(target) - profile.health)),
+      price: niceRound(Math.max(3, payWorth(profile) * pack.pays)),
+    }
+  })
 }
 
-/** Yards of every trophy within `distance`. */
-export function trophiesWithin(distance) {
-  const out = []
-  for (let m = TROPHY_FIRST; m <= distance; m += TROPHY_SPACING) out.push(m)
-  return out
+/** Buys level pack `index` with Wins. */
+export function buyLevelPack(profile, index, now = 0) {
+  if (isMaxLevel(profile)) return { ok: false, error: 'Max level - rebirth!' }
+  const pack = levelPacks(profile)[index]
+  if (!pack) return { ok: false, error: 'Unknown pack' }
+  if (profile.wins < pack.price) return { ok: false, error: 'Not enough Wins!' }
+  profile.wins -= pack.price
+  const before = profile.level
+  profile.health = tidy(profile.health + pack.amount)
+  profile.stats.bestHealth = Math.max(profile.stats.bestHealth, profile.health)
+  profile.level = levelFor(profile.health, profile.rebirths)
+  return { ok: true, amount: pack.amount, levels: profile.level - before, unlocked: unlockStages(profile, now) }
 }
 
-/** Wins the trophy at `meter` is worth in `world`, before multipliers. */
-export const trophyValue = (meter, world = 0) => Math.max(1, Math.round(zonesOf(world)[zoneIndexAt(meter)].winsPerMeter * TROPHY_METERS))
+// --- Tornadoes and upgrades ----------------------------------------------------------
 
-/**
- * Wins for a kick in `world` before multipliers: every yard flown, at its stage's rate
- * (further out pays more per yard), plus the trophies passed. (All worlds' stages start
- * at the same yards; only what they pay differs.)
- */
-export function baseRollWins(distance, world = 0) {
-  const zones = zonesOf(world)
-  let wins = 0
-  for (let i = 0; i < zones.length; i += 1) {
-    const start = zones[i].start
-    const end = i + 1 < zones.length ? zones[i + 1].start : Infinity
-    const metres = Math.max(0, Math.min(distance, end) - start)
-    wins += metres * zones[i].winsPerMeter
-  }
-  for (let m = TROPHY_FIRST; m <= distance; m += TROPHY_SPACING) wins += trophyValue(m, world)
-  return wins
+export function buyTornado(profile, id) {
+  const index = tornadoIndex(id)
+  if (index < 0) return { ok: false, error: 'Unknown tornado' }
+  if (profile.ownedTornadoes.includes(id)) return equipTornado(profile, id)
+  const previous = TORNADOES[index - 1]
+  if (previous && !profile.ownedTornadoes.includes(previous.id)) return { ok: false, error: `Buy the ${previous.name} first!` }
+  const tornado = TORNADOES[index]
+  if (profile.wins < tornado.cost) return { ok: false, error: 'Not enough Wins!' }
+  profile.wins -= tornado.cost
+  profile.ownedTornadoes.push(id)
+  profile.equippedTornado = id
+  return { ok: true, bought: true, id }
 }
 
-/** Wins a roll at `health` pays in `world` before multipliers. */
-export const rollWinsAt = (health, world = 0) => baseRollWins(rollOutcome(health).distance, world)
-
-/**
- * A kick down the field. Health is not consumed. Returns everything the client needs
- * to replay it locally: distance, duration, the wall that stopped it, the Wins earned
- * (trophy positions follow from the distance) and any zone reached for the first time.
- * `accuracy` is where the timing meter was stopped (0-1, see HIT_GRADES): its grade
- * decides how far the ball flies (hitReach: half as far for a WEAK kick, half as far
- * again for a PERFECT one) and multiplies the Wins (`bonus`). The Wins are what the
- * kick's Power is worth - the yards a plain kick would fly - times that bonus, never
- * the extra yards themselves: further out every yard pays more, so paying for them
- * would multiply a PERFECT kick's Wins dozens of times over late in the game. Without
- * the meter (Auto Kick) the kick is a plain x1 kick.
- */
-export function applyRoll(profile, now, accuracy = null, bonus = 1, stretch = 0) {
-  // `stretch` (0-1): how much of the 40 m stretch lane you'd walked back - further and richer.
-  const pulled = Math.min(1, Math.max(0, Number(stretch) || 0))
-  const outcome = rollOutcome(profile.health, hitReach(accuracy) * (1 + STRETCH_REACH * pulled))
-  const distance = Math.round(outcome.distance * 10) / 10
-  const grade = hitGrade(accuracy)
-  // `bonus`: the session's own multipliers (a PERFECT combo, friends in the server).
-  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1) * (1 + STRETCH_WINS * pulled)
-  const world = profile.world
-  const worth = Math.round(rollReach(profile.health) * 10) / 10
-  const wins = Math.max(1, Math.round(baseRollWins(worth, world) * multiplier))
-  // First time into a zone: its discovery prize, paid once ever (once in each world).
-  const zone = zoneIndexAt(distance)
-  const bestKey = world === 1 ? 'bestZone2' : 'bestZone'
-  const discovered = []
-  let prize = 0
-  for (let i = profile.stats[bestKey] + 1; i <= zone; i += 1) {
-    discovered.push(i)
-    prize += WORLD_ZONES[world][i].discover
-  }
-  const best = distance > profile.stats.bestDistance
-  profile.wins += wins + prize
-  profile.stats.totalWins += wins + prize
-  profile.stats.rolls += 1
-  profile.stats.wallsBroken += outcome.broken
-  profile.stats.bestDistance = Math.max(profile.stats.bestDistance, distance)
-  profile.stats[bestKey] = Math.max(profile.stats[bestKey], zone)
-  const duration = rollDuration(distance)
-  return {
-    ok: true,
-    distance,
-    wins,
-    prize,
-    discovered,
-    blocked: outcome.blocked,
-    broken: outcome.broken,
-    multiplier,
-    hit: grade ? grade.id : null,
-    best,
-    duration,
-    cooldown: duration + ROLL_RECOVERY,
-  }
+export function equipTornado(profile, id) {
+  if (!profile.ownedTornadoes.includes(id)) return { ok: false, error: 'You don’t own that tornado' }
+  profile.equippedTornado = id
+  return { ok: true, equipped: true, id }
 }
 
-/** Wins (before multipliers) of a roll at your max level: what packs and skips cost in. */
-export const maxRollWins = (profile) => rollWinsAt(healthForLevel(levelCap(profile.rebirths)), profile.world)
+/** The next tornado in line you don't have yet, or null. */
+export function nextTornado(profile) {
+  return TORNADOES.find((t) => !profile.ownedTornadoes.includes(t.id)) || null
+}
 
-/** `rolls` max-level launches' worth of Wins: rewards that grow with you. */
-export const winsForRolls = (profile, rolls) => Math.max(10, Math.round(maxRollWins(profile) * rolls))
+/** What the next level of upgrade `id` costs, or null at its max. */
+export function upgradePrice(profile, id) {
+  const u = UPGRADES[id]
+  if (!u) return null
+  const level = profile.upgrades[id] || 0
+  return level >= u.max ? null : upgradeCost(id, level)
+}
+
+export function buyUpgrade(profile, id) {
+  const price = upgradePrice(profile, id)
+  if (price === null) return { ok: false, error: 'Maxed!' }
+  if (profile.wins < price) return { ok: false, error: 'Not enough Wins!' }
+  profile.wins -= price
+  profile.upgrades[id] = (profile.upgrades[id] || 0) + 1
+  return { ok: true, id, level: profile.upgrades[id] }
+}
+
+// --- Rewards that grow with you -----------------------------------------------------
 
 /** The egg item that fits how far you've got: a reward that's always worth opening. */
 export function eggItemFor(profile) {
-  if (profile.rebirths >= 10) return 'eggVolcano'
-  if (profile.rebirths >= 5) return 'eggUnicorn'
-  if (profile.rebirths >= 2) return 'eggSunset'
+  if (profile.unlocked >= 12) return 'eggVolcano'
+  if (profile.unlocked >= 8) return 'eggUnicorn'
+  if (profile.unlocked >= 4) return 'eggSunset'
   return 'eggMeadow'
 }
 
 /**
- * Pays a reward grant of { winsRolls?, item?, egg? } (quests, lucky gifts). Returns what
- * was given: { wins, items: [itemId...] }.
+ * Pays a reward grant of { winsPays?, item?, egg? } (quests, lucky gifts). Returns
+ * what was given: { wins, items: [itemId...] }.
  */
 export function payReward(profile, grant) {
   const out = { wins: 0, items: [] }
-  if (grant.winsRolls) {
-    out.wins = winsForRolls(profile, grant.winsRolls)
+  if (grant.winsPays) {
+    out.wins = winsForPays(profile, grant.winsPays)
     profile.wins += out.wins
     profile.stats.totalWins += out.wins
   }
@@ -481,92 +523,6 @@ export function payReward(profile, grant) {
     out.items.push(egg)
   }
   return out
-}
-
-/**
- * The Health packs as they stand for you now: `[{ amount, price }]`. Both follow the
- * Health your next level needs, and the Wins a roll with that much Health pays.
- */
-export function healthPacks(profile) {
-  const next = healthForLevel(profile.level + 1)
-  const wins = rollWinsAt(next, profile.world)
-  return HEALTH_PACKS.map((pack) => ({
-    amount: niceRound(Math.max(10, next * pack.share)),
-    price: niceRound(Math.max(3, wins * pack.rolls)),
-  }))
-}
-
-/** Buys Health pack `index` with Wins. Packs ignore the level cap. */
-export function buyHealthPack(profile, index) {
-  const pack = healthPacks(profile)[index]
-  if (!pack) return { ok: false, error: 'Unknown pack' }
-  if (profile.wins < pack.price) return { ok: false, error: 'Not enough Wins!' }
-  profile.wins -= pack.price
-  profile.health = tidy(profile.health + pack.amount)
-  profile.stats.bestHealth = Math.max(profile.stats.bestHealth, profile.health)
-  profile.level = levelFor(profile.health, profile.rebirths)
-  return { ok: true, amount: pack.amount }
-}
-
-/** Wins to rebirth now without reaching max level first. */
-export const rebirthSkipPrice = (profile) => niceRound(Math.max(20, maxRollWins(profile) * REBIRTH_SKIP_ROLLS))
-
-export function skipRebirth(profile) {
-  if (isMaxLevel(profile)) return applyRebirth(profile)
-  const price = rebirthSkipPrice(profile)
-  if (profile.wins < price) return { ok: false, error: 'Not enough Wins!' }
-  profile.wins -= price
-  profile.level = levelCap(profile.rebirths)
-  return applyRebirth(profile)
-}
-
-// --- Worlds -------------------------------------------------------------------------
-
-/**
- * Steps through the world portal: from World 1 into Palm Beach (opening it for good the
- * first time you have the rebirths and hold the Wins - they aren't spent), or from Palm
- * Beach back home.
- */
-export function usePortal(profile) {
-  if (profile.world === 1) {
-    profile.world = 0
-    return { ok: true, world: 0 }
-  }
-  const { wins: need, rebirths } = WORLD_PORTALS.world2
-  if (!profile.world2Unlocked && profile.rebirths < rebirths) return { ok: false, error: `Need ${rebirths} Rebirths`, need, rebirths }
-  if (!profile.world2Unlocked && profile.wins < need) return { ok: false, error: `Need ${need} Wins`, need, rebirths }
-  const first = !profile.world2Unlocked
-  profile.world2Unlocked = true
-  profile.world = 1
-  return { ok: true, world: 1, first }
-}
-
-// --- Tires --------------------------------------------------------------------------
-
-export function buyTire(profile, tireId) {
-  const tire = TIRES.find((t) => t.id === tireId)
-  if (!tire) return { ok: false, error: 'Unknown arms' }
-  if (profile.ownedTires.includes(tireId)) return equipTire(profile, tireId)
-  const previous = TIRES[tireIndex(tireId) - 1]
-  if (previous && !profile.ownedTires.includes(previous.id)) {
-    return { ok: false, error: `Buy the ${previous.name} first!` }
-  }
-  if (profile.wins < tire.cost) return { ok: false, error: 'Not enough Wins!' }
-  profile.wins -= tire.cost
-  profile.ownedTires.push(tireId)
-  profile.equippedTire = tireId
-  return { ok: true, bought: true, tireId }
-}
-
-export function equipTire(profile, tireId) {
-  if (!profile.ownedTires.includes(tireId)) return { ok: false, error: 'You don’t own those arms' }
-  profile.equippedTire = tireId
-  return { ok: true, equipped: true, tireId }
-}
-
-/** The next tire in the showroom you don't have yet, or null. */
-export function nextTire(profile) {
-  return TIRES.find((t) => !profile.ownedTires.includes(t.id)) || null
 }
 
 // --- Pets --------------------------------------------------------------------------
@@ -597,8 +553,6 @@ export function addPet(profile, petId) {
 export function hatchEgg(profile, eggId, count = 1, { paid = 'wins', rand = Math.random } = {}) {
   const egg = EGGS[eggId]
   if (!egg) return { ok: false, error: 'Unknown egg' }
-  // A world's own egg hatches in that world only (eggs from rewards included).
-  if (egg.world !== undefined && (profile.world || 0) !== egg.world) return { ok: false, error: 'Hatches in Palm Beach only!' }
   if (profile.pets.length + count > MAX_PET_INVENTORY) return { ok: false, error: 'Pet inventory full!' }
   if (paid === 'wins') {
     if (!egg.cost.wins) return { ok: false, error: 'This egg is premium only' }
@@ -677,6 +631,7 @@ export function applyGrant(profile, grant, { rand = Math.random } = {}) {
     profile.health = tidy(profile.health + grant.health)
     profile.stats.bestHealth = Math.max(profile.stats.bestHealth, profile.health)
     profile.level = levelFor(profile.health, profile.rebirths)
+    result.unlocked = unlockStages(profile)
   }
   if (grant.item) addItem(profile, grant.item, grant.amount || 1)
   if (grant.pet) result.pets = [addPet(profile, grant.pet)]
@@ -759,8 +714,6 @@ export function buyShopItem(profile, productId, opts = {}) {
   if (item.kind === 'pass') {
     profile.wins -= item.price
     profile.passes[productId] = true
-    // Auto Roll switches itself on once bought.
-    if (productId === 'autoRoll') profile.settings.autoRoll = true
     return { ok: true, productId, pass: true }
   }
   const result = applyGrant(profile, item.grant || {}, opts)
@@ -781,14 +734,13 @@ export function applyGemProduct(profile, sku) {
   const result = { ok: true, sku, name: product.name }
   if (grant.pass) {
     if (profile.passes[grant.pass]) {
-      result.wins = Math.max(10, Math.round(maxRollWins(profile) * 20))
+      result.wins = winsForPays(profile, 30)
     } else {
       profile.passes[grant.pass] = true
-      if (grant.pass === 'autoRoll') profile.settings.autoRoll = true
       result.pass = grant.pass
     }
   }
-  if (grant.winsRolls) result.wins = (result.wins || 0) + Math.max(25, Math.round(maxRollWins(profile) * grant.winsRolls))
+  if (grant.winsPays) result.wins = (result.wins || 0) + Math.max(25, winsForPays(profile, grant.winsPays))
   if (result.wins) {
     profile.wins += result.wins
     profile.stats.totalWins += result.wins
@@ -809,7 +761,7 @@ export function applyAdReward(profile, session, placement, now) {
 
 // --- Offline progress -------------------------------------------------------------
 
-/** Health earned while away, if the player logged off on a training pad. */
+/** Power earned while away, if the player logged off in a Storm Zone. */
 export function applyOfflineProgress(profile, now) {
   const away = Math.min(OFFLINE_MAX_MS, now - (profile.lastSeen || now))
   if (profile.lastPad < 0 || away < OFFLINE_MIN_MS) return null
@@ -819,6 +771,7 @@ export function applyOfflineProgress(profile, now) {
   const gain = padGain(profile, profile.lastPad, 0)
   const result = addHealth(profile, Math.floor(steps * gain * OFFLINE_RATE))
   if (result.gain <= 0) return null
+  unlockStages(profile, now)
   return { health: result.gain, ms: away }
 }
 
@@ -834,18 +787,11 @@ export function advanceTutorial(profile, event) {
 }
 
 /** Awards a badge once. Returns the badge if newly awarded. */
-/**
- * Finds Palm Beach's Secret Star (the caller checks the player is at it, in Palm Beach).
- * Once only; false if it was already found.
- */
-export function claimSecretStar(profile) {
-  if ((profile.world || 0) !== SECRET_STAR.world || profile.secretStars?.world2) return false
-  profile.secretStars = { ...profile.secretStars, world2: true }
-  return true
-}
-
 export function awardBadge(profile, id) {
   if (!BADGES[id] || profile.badges.includes(id)) return null
   profile.badges.push(id)
   return { id, ...BADGES[id] }
 }
+
+// Re-exported for the HUD: how tall your funnel is drawn, ring count.
+export { ringsFor, TORNADO_HEIGHT }

@@ -1,4 +1,4 @@
-import { RUN_CADENCE } from '../game/kick'
+import { TRAIN_INTERVAL } from '@shared/balance'
 
 import { useQuality } from '../store/quality'
 import { createCrowd } from './crowd'
@@ -182,15 +182,15 @@ export function onMutedChange(listener) {
   return () => muteListeners.delete(listener)
 }
 
-// --- The flight: rushing through the air ------------------------------------------------
+// --- Your tornado: the roar of the wind -----------------------------------------------
 
 let ride = null
 let rideSetAt = 0
 
 /**
- * You in flight: a low, soft rush of air, swelling and fluttering with your speed - a
- * round, low-passed sound with no hiss in it - while the crowd "ooohs". The music ducks
- * under it until `windStop`.
+ * Your tornado's roar: a low, soft rush of air with a hum under it, swelling and
+ * fluttering with how fast you're going and how big you are - a round, low-passed sound
+ * with no hiss in it. Started on the first tap (audio needs one), set every frame.
  */
 function windStart() {
   if (!ctx || ride || ctx.state !== 'running') return
@@ -223,8 +223,6 @@ function windStart() {
   tumble.start(t)
   hum.start(t)
   ride = { src, air, body, tumble, depth, hum, humGain }
-  music?.duck(true)
-  liveCrowd()?.anticipate(true)
 }
 
 /**
@@ -240,13 +238,14 @@ function windSet(level, airborne = false) {
   const t = ctx.currentTime
   const l = Math.min(1, Math.max(0, level))
   const on = airborne ? 1 : 0
-  const loud = on * (0.012 + l * 0.05)
+  // A real roar: loud enough to feel, deep, rising with your speed and size.
+  const loud = on * (0.024 + l * 0.08)
   ride.air.gain.setTargetAtTime(loud, t, 0.15)
   ride.depth.gain.setTargetAtTime(loud * 0.8, t, 0.15)
-  ride.body.frequency.setTargetAtTime(300 + l * 600, t, 0.2)
+  ride.body.frequency.setTargetAtTime(240 + l * 560, t, 0.2)
   ride.tumble.frequency.setTargetAtTime(3 + l * 7, t, 0.25)
-  ride.hum.frequency.setTargetAtTime(60 + l * 50, t, 0.25)
-  ride.humGain.gain.setTargetAtTime(on * (0.006 + l * 0.012), t, 0.15)
+  ride.hum.frequency.setTargetAtTime(48 + l * 46, t, 0.25)
+  ride.humGain.gain.setTargetAtTime(on * (0.012 + l * 0.024), t, 0.15)
 }
 
 function windStop() {
@@ -260,14 +259,12 @@ function windStop() {
   src.stop(t + 1)
   tumble.stop(t + 1)
   hum.stop(t + 1)
-  music?.duck(false)
-  liveCrowd()?.anticipate(false)
 }
 
 // --- The pull-up bar: a springy boing every rep ----------------------------------------
 
-/** Seconds between reps on a bar: one a TRAIN_INTERVAL (kick.RUN_CADENCE is its phase speed). */
-const REP = (Math.PI * 2) / RUN_CADENCE
+/** Seconds between gains in a Storm Zone. */
+const REP = TRAIN_INTERVAL
 let bar = null
 
 /**
@@ -282,9 +279,9 @@ function treadmillStart() {
     next = Math.max(next, ctx.currentTime + 0.02)
     while (next < ctx.currentTime + 0.4) {
       const at = next - ctx.currentTime
-      tone(150, { type: 'triangle', at, duration: 0.2, volume: 0.06, slideTo: 380 })
-      tone(760, { type: 'sine', at: at + 0.02, duration: 0.07, volume: 0.02, slideTo: 1100 })
-      tone(120, { type: 'sawtooth', at: at + REP * 0.5, duration: 0.18, volume: 0.012, slideTo: 85 })
+      // A gust swirling round you each time the zone pays out.
+      noise({ at, duration: 0.35, volume: 0.035, from: 260, to: 1400, q: 1.2 })
+      tone(520, { type: 'sine', at: at + 0.05, duration: 0.12, volume: 0.02, slideTo: 880 })
       next += REP
     }
   }
@@ -704,6 +701,102 @@ export const sfx = {
     if (!ready('rollStop')) return
     tone(120, { duration: 0.16, volume: 0.1, slideTo: 55 })
     tone(140, { at: 0.22, duration: 0.12, volume: 0.05, slideTo: 70 })
+  },
+  /**
+   * Something swallowed: a pop that drops in pitch the bigger it was (`size` 0 tiny .. 4
+   * huge), climbing a little with the streak (`streak`).
+   */
+  absorb(size = 0, streak = 0) {
+    if (!ready('absorb', 45)) return
+    const step = Math.min(12, streak) * 25
+    tone(900 - size * 140 + step, { type: 'triangle', duration: 0.09, volume: 0.04 + size * 0.01, slideTo: 300 - size * 40 })
+    if (size >= 2) noise({ duration: 0.18 + size * 0.05, volume: 0.05 + size * 0.02, from: 1600, to: 300, q: 0.7 })
+  },
+  /**
+   * Something torn apart, the moment your funnel hits it (`size` 0 tiny .. 5 landmark): a
+   * soft deep thump, a crisp crack and crunch (band-passed, so it never hisses), woody
+   * knocks of pieces, soft glassy chimes from buildings, and a whoosh as the wind takes
+   * the pieces up the funnel - deeper, longer and fuller the bigger it was.
+   */
+  smash(size = 0) {
+    const s = Math.min(5, Math.max(0, size))
+    if (!ready(s >= 3 ? 'smashBig' : 'smash', s >= 3 ? 150 : 85)) return
+    const few = lite()
+    tone(120 - s * 14, { duration: 0.2 + s * 0.08, volume: 0.08 + s * 0.035, slideTo: 40 })
+    noise({ duration: 0.06 + s * 0.015, volume: 0.07 + s * 0.025, from: 3200, to: 1400, q: 0.9 })
+    noise({ duration: 0.18 + s * 0.08, volume: 0.05 + s * 0.03, from: 1600 - s * 150, to: 300, q: 0.8 })
+    const knocks = few ? 2 : 2 + s
+    for (let i = 0; i < knocks; i += 1) {
+      tone(600 + Math.random() * 900, { type: 'triangle', at: 0.06 + i * 0.05 + Math.random() * 0.03, duration: 0.035, volume: 0.022, slideTo: 300 })
+    }
+    if (s >= 2 && !few) {
+      for (let i = 0; i < 2 + (s >> 1); i += 1) bell(2200 + Math.random() * 1800, { at: 0.04 + Math.random() * 0.2, volume: 0.018, decay: 0.18 })
+    }
+    if (s >= 1) noise({ at: 0.12, duration: 0.45, volume: 0.03 + s * 0.01, from: 350, to: 1800, q: 0.7 })
+  },
+  /**
+   * A whole city cleared (90% of it destroyed): a deep boom and a rising whoosh, then a
+   * bright ringing fanfare - a major arpeggio climbing over a held chord - and a shower of
+   * coin sparkles, the crowd roaring.
+   */
+  cityCleared() {
+    if (!ready('cityCleared', 800)) return
+    liveCrowd()?.roar(1)
+    tone(70, { duration: 0.9, volume: 0.26, slideTo: 32 })
+    noise({ duration: 0.7, volume: 0.1, from: 300, to: 3200, q: 0.6 })
+    ;[523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => tone(f, { type: 'triangle', at: 0.18 + i * 0.09, duration: 0.5, volume: 0.075, echo: true }))
+    ;[523.25, 659.25, 783.99].forEach((f) => tone(f, { at: 0.65, duration: 1.3, volume: 0.05, echo: true }))
+    ;[1568, 2093, 2637].forEach((f, i) => bell(f, { at: 0.7 + i * 0.12, volume: 0.05, decay: 0.5 }))
+    for (let i = 0; i < 8; i += 1) bell(1800 + Math.random() * 1600, { at: 0.9 + i * 0.07, volume: 0.025, decay: 0.15 })
+  },
+  /** A big thing straining in your funnel (`progress` 0-1 to breaking): a groan and a crack. */
+  tear(progress = 0) {
+    if (!ready('tear', 220)) return
+    tone(64 + progress * 40, { type: 'sawtooth', duration: 0.24, volume: 0.03 + progress * 0.03, slideTo: 44 + progress * 30 })
+    noise({ duration: 0.06, volume: 0.05 + progress * 0.08, from: 3400, to: 1200, q: 0.8 })
+  },
+  /** Thunder after a lightning flash (`near` 0 far .. 1 overhead): a crack, then a long rumble. */
+  thunder(near = 0.5) {
+    if (!ready('thunder', 1500)) return
+    const v = 0.1 + near * 0.16
+    noise({ duration: 0.14, volume: Math.max(0.002, v * near), from: 5200, to: 1300, q: 0.5 })
+    noise({ at: 0.05, duration: 2.4, volume: v, from: 320, to: 50, q: 0.35 })
+    tone(46, { at: 0.05, duration: 1.8, volume: v * 0.8, slideTo: 28 })
+    noise({ at: 0.6, duration: 1.7, volume: v * 0.6, from: 220, to: 55, q: 0.4 })
+  },
+  /** A Giant Trophy torn up: a crunch, a whoosh and a bright fanfare of coins. */
+  trophyBreak() {
+    if (!ready('trophyBreak', 300)) return
+    tone(110, { duration: 0.4, volume: 0.22, slideTo: 45 })
+    noise({ duration: 0.4, volume: 0.22, from: 3000, to: 400, q: 0.6 })
+    ;[784, 988, 1319, 1568].forEach((f, i) => bell(f, { at: 0.08 + i * 0.06, volume: 0.07, decay: 0.3 }))
+    for (let i = 0; i < 6; i += 1) bell(1900 + (i % 3) * 300, { at: 0.35 + i * 0.06, volume: 0.035, decay: 0.12 })
+  },
+  /** A Landmark coming down: a deep boom, a long rumble of rubble and a triumphant chord. */
+  landmarkBreak() {
+    if (!ready('landmarkBreak', 600)) return
+    liveCrowd()?.roar(1)
+    tone(60, { duration: 1.2, volume: 0.32, slideTo: 28 })
+    noise({ duration: 1.4, volume: 0.24, from: 1400, to: 120, q: 0.5 })
+    for (let i = 0; i < 10; i += 1) tone(200 + Math.random() * 300, { type: 'square', at: 0.2 + i * 0.09, duration: 0.05, volume: 0.03 })
+    ;[523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, { type: 'triangle', at: 0.3 + i * 0.08, duration: 0.5, volume: 0.07, echo: true }))
+  },
+  /** Your Surge: a rising roar and a blast. */
+  surge() {
+    if (!ready('surge', 300)) return
+    noise({ duration: 0.6, volume: 0.18, from: 200, to: 2600, q: 0.7 })
+    tone(80, { duration: 0.5, volume: 0.25, slideTo: 40 })
+    tone(330, { type: 'sawtooth', duration: 0.4, volume: 0.05, slideTo: 1320 })
+  },
+  /** A thing too big for your level: a dull thunk. */
+  locked() {
+    if (!ready('locked', 350)) return
+    tone(120, { duration: 0.14, volume: 0.09, slideTo: 70 })
+  },
+  /** A new kind in the Index: a sparkle. */
+  discover() {
+    if (!ready('discover', 200)) return
+    ;[1319, 1760, 2093].forEach((f, i) => bell(f, { at: i * 0.05, volume: 0.05, decay: 0.25 }))
   },
   windStart,
   windSet,

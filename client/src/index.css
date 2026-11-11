@@ -28,17 +28,23 @@
   left: calc(var(--px) * 18);
   top: calc(var(--px) * 380);
 }
-.hud-passes {
-  right: calc(var(--px) * 24);
-  top: 34%;
+.hud-right {
+  right: calc(var(--px) * 30);
+  top: 26%;
 }
-/* The stick's resting spot and the jump button (TouchControls.jsx). */
+/* The SURGE button, and the server's news under the top-right buttons. */
+.hud-surge {
+  right: calc(var(--px) * 40);
+  bottom: calc(var(--px) * 40);
+}
+.hud-feed {
+  right: calc(var(--px) * 24);
+  top: calc(var(--px) * 100);
+  align-items: flex-end;
+}
+/* The stick's resting spot (TouchControls.jsx). */
 .touch-joy-rest {
   top: calc(100% - 129px);
-}
-.touch-jump {
-  right: 14px;
-  bottom: 14px;
 }
 
 @media (orientation: portrait) {
@@ -55,21 +61,24 @@
   .hud-menu {
     top: calc(var(--px) * 600);
   }
-  .hud-passes {
+  .hud-right {
     top: calc(var(--px) * 420);
   }
-  /* Above the Health bar, which runs the whole width along the bottom. */
+  /* Above the level bar, which runs the whole width along the bottom. */
   .touch-joy-rest {
-    top: calc(100% - 129px - var(--px) * 300);
+    top: calc(100% - 129px - var(--px) * 380);
   }
-  .touch-jump {
-    bottom: calc(14px + var(--px) * 300);
+  .hud-surge {
+    bottom: calc(var(--px) * 420);
+  }
+  .hud-feed {
+    top: calc(var(--px) * 300);
   }
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
-  .hud-passes {
-    top: calc(var(--px) * 110);
+  .hud-right {
+    top: calc(var(--px) * 130);
   }
 }
 
@@ -580,4 +589,83 @@ canvas {
     opacity: 0;
     transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(220deg);
   }
+}
+
+/* The big announcements (Banners.jsx): the ribbon slams in, holds, sweeps off. */
+@keyframes pp-banner {
+  0% {
+    transform: scale(0.4) rotate(6deg);
+    opacity: 0;
+  }
+  8% {
+    transform: scale(1.12) rotate(-1deg);
+    opacity: 1;
+  }
+  14% {
+    transform: scale(1) rotate(0deg);
+  }
+  86% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-35%);
+    opacity: 0;
+  }
+}
+.pp-banner {
+  animation: pp-banner 2.6s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+@keyframes pp-shine {
+  from {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(220%) skewX(-20deg);
+  }
+}
+.pp-banner-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: pp-shine 1.2s 0.25s ease-out both;
+}
+/* A news line sliding in from the right (Feed.jsx). */
+@keyframes pp-feed {
+  0% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  10% {
+    transform: translateX(-4%);
+    opacity: 1;
+  }
+  15% {
+    transform: translateX(0);
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.pp-feed {
+  animation: pp-feed 5s ease-out forwards;
+}
+
+/* A tornado's bands turning (TornadoesPanel's previews). */
+@keyframes pp-swirl {
+  from {
+    transform: rotateX(68deg) rotateZ(0deg);
+  }
+  to {
+    transform: rotateX(68deg) rotateZ(360deg);
+  }
+}
+.pp-swirl {
+  animation: pp-swirl 0.8s linear infinite;
 }

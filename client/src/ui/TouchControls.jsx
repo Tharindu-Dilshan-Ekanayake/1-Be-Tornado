@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { runtime } from '../game/runtime'
-import { GRADIENTS } from './hud/style'
 
 /** Joystick travel radius, in CSS pixels. */
 const RADIUS = 56
@@ -11,18 +10,11 @@ function detectTouch() {
   return window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
 }
 
-/** The chunky round look of the HUD's buttons, sized in CSS pixels. */
-const roundButton = (size, background) => ({
-  width: size,
-  height: size,
-  background,
-  border: '4px solid #111',
-})
-
 /**
  * On-screen controls for touch devices: a floating joystick that appears wherever the
- * left side of the screen is touched, and a jump button. Everything else is walking
- * onto things: the kick zone, a treadmill, a ball stand.
+ * left side of the screen is touched, to steer your tornado. The SURGE button is the
+ * HUD's (it works by touch too); everything else is moving onto things: a Storm Zone, a
+ * tornado stand, an egg.
  *
  * Writes straight into `runtime.input` and moves the knob through refs, so dragging
  * never re-renders React.
@@ -47,7 +39,6 @@ export function TouchControls() {
     () => () => {
       runtime.input.joyX = 0
       runtime.input.joyY = 0
-      runtime.input.jump = false
     },
     [],
   )
@@ -127,30 +118,6 @@ export function TouchControls() {
         </div>
       </div>
 
-      <button
-        type="button"
-        aria-label="Jump"
-        className="touch-jump pp-btn pp-chunky absolute z-20 flex touch-none items-center justify-center rounded-full text-white"
-        style={roundButton(70, GRADIENTS.slate)}
-        onPointerDown={(e) => {
-          e.preventDefault()
-          runtime.input.jump = true
-        }}
-        onPointerUp={() => {
-          runtime.input.jump = false
-        }}
-        onPointerCancel={() => {
-          runtime.input.jump = false
-        }}
-        onPointerLeave={() => {
-          runtime.input.jump = false
-        }}
-      >
-        <span className="pp-gloss" style={{ borderRadius: '35px 35px 20px 20px' }} />
-        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="3.5">
-          <path d="M5 15l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
     </>
   )
 }

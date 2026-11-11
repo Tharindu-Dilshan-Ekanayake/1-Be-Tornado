@@ -34,6 +34,7 @@ const vertexShader = /* glsl */ `
   attribute vec2 aCorner;
   attribute float aFade;
   uniform float uMaxDistance;
+  uniform float uNearFade;
   varying vec2 vUv;
   varying float vAlpha;
   void main() {
@@ -44,7 +45,7 @@ const vertexShader = /* glsl */ `
     mv.xy += aCorner * clamp(d / 18.0, 0.4, 1.0);
     gl_Position = projectionMatrix * mv;
     float far = min(aFade, uMaxDistance);
-    vAlpha = (1.0 - smoothstep(far * 0.75, far, d)) * smoothstep(2.5, 6.0, d);
+    vAlpha = (1.0 - smoothstep(far * 0.75, far, d)) * smoothstep(uNearFade * 0.4, uNearFade, d);
     vUv = uv;
   }
 `
@@ -161,8 +162,10 @@ export class LabelBatch {
    * @param {{ pageSize: number }} options pageSize is the atlas texture size (512 on
    *   low-end, 1024 otherwise); labels are drawn proportionally smaller on small pages.
    */
-  constructor({ pageSize = 1024 } = {}) {
+  constructor({ pageSize = 1024, nearFade = 6 } = {}) {
     this.pageSize = pageSize
+    /** Labels fade out as the camera comes nearer than this (and from 40% of it). */
+    this.nearFade = nearFade
     this.scale = pageSize / 1024
     this.labels = new Map()
     this.pages = []
@@ -244,7 +247,7 @@ export class LabelBatch {
       p.material = new ShaderMaterial({
         vertexShader,
         fragmentShader,
-        uniforms: { map: { value: p.texture }, uMaxDistance: { value: 1e5 } },
+        uniforms: { map: { value: p.texture }, uMaxDistance: { value: 1e5 }, uNearFade: { value: this.nearFade } },
         transparent: true,
         depthWrite: false,
       })

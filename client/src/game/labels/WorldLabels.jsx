@@ -15,8 +15,6 @@ import { getActiveLabelBatch, setActiveLabelBatch } from './registry'
 export function WorldLabels() {
   const maxDistance = useQuality((s) => s.settings.labelDistance)
   const playable = useGame((s) => s.playable)
-  // The portal's sign says where it goes, so the signs are rebuilt in a new world.
-  const world = useGame((s) => s.profile.world)
   const gl = useThree((s) => s.gl)
   const camera = useThree((s) => s.camera)
   const scene = useThree((s) => s.scene)
@@ -26,8 +24,8 @@ export function WorldLabels() {
   useEffect(() => {
     if (!playable) return undefined
     const next = new LabelBatch({ pageSize: useQuality.getState().settings.maxTexture })
-    const { profile, sphinxStock } = getGame()
-    for (const label of lobbyLabels(profile, { sphinxStock })) next.add(label.id, label.position, label.spec, label)
+    const { profile } = getGame()
+    for (const label of lobbyLabels(profile)) next.add(label.id, label.position, label.spec, label)
     let cancelled = false
     // After the HUD's first paint: wait for an idle moment (or at most 1.5 s).
     const idle = new Promise((resolve) =>
@@ -54,7 +52,7 @@ export function WorldLabels() {
       if (getActiveLabelBatch() === next) setActiveLabelBatch(null)
       next.dispose()
     }
-  }, [playable, world, gl, camera, scene])
+  }, [playable, gl, camera, scene])
 
   useEffect(() => {
     batch?.setMaxDistance(maxDistance)

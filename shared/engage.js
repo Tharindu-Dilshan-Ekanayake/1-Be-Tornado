@@ -1,5 +1,5 @@
-import { dayNumber, LUCKY_CHANCE, LUCKY_GIFTS, QUEST_BONUS, QUEST_TIERS, QUEST_TYPES, QUESTS_PER_DAY, streakMultiplier } from './balance.js'
-import { niceRound, payReward, winsForRolls } from './logic.js'
+import { dayNumber, loginMultiplier, LUCKY_CHANCE, LUCKY_GIFTS, QUEST_BONUS, QUEST_TIERS, QUEST_TYPES, QUESTS_PER_DAY } from './balance.js'
+import { payReward, winsForPays } from './logic.js'
 import { mulberry32 } from './rng.js'
 
 /**
@@ -18,15 +18,6 @@ function hashString(text) {
   return h >>> 0
 }
 
-/** A quest's target for `tier`, scaled by your best flight where its kind asks. */
-function questTarget(type, tier, profile) {
-  const raw = type.targets[tier]
-  const best = Math.max(120, profile.stats.bestDistance || 0)
-  if (type.scale === 'total') return niceRound(raw * best)
-  if (type.scale === 'best') return niceRound(Math.max(80, raw * best))
-  return raw
-}
-
 /** Today's three quests for `profile`: an EASY, a MEDIUM and a HARD one, all different kinds. */
 export function createQuestDay(profile, day) {
   const rand = mulberry32(hashString(`${profile.id}:${day}`))
@@ -34,7 +25,7 @@ export function createQuestDay(profile, day) {
   const list = []
   for (let tier = 0; tier < QUESTS_PER_DAY; tier += 1) {
     const pick = kinds.splice(Math.floor(rand() * kinds.length), 1)[0]
-    list.push({ type: pick, tier, target: questTarget(QUEST_TYPES[pick], tier, profile), progress: 0, claimed: false })
+    list.push({ type: pick, tier, target: QUEST_TYPES[pick].targets[tier], progress: 0, claimed: false })
   }
   return { day, list, bonus: false }
 }
@@ -48,7 +39,7 @@ export function ensureQuests(profile, now) {
   return true
 }
 
-/** A quest's line for the UI: "Launch 12 times". */
+/** A quest's line for the UI: "Absorb 200 things". */
 export const questText = (quest) => QUEST_TYPES[quest.type]?.text.replace('{n}', quest.target.toLocaleString('en-US')) ?? ''
 
 export const questDone = (quest) => quest.progress >= quest.target
@@ -58,11 +49,11 @@ export function questReward(profile, index) {
   const quest = profile.quests.list[index]
   if (!quest) return null
   const tier = QUEST_TIERS[quest.tier]
-  return { wins: winsForRolls(profile, tier.winsRolls), item: tier.item ?? null }
+  return { wins: winsForPays(profile, tier.winsPays), item: tier.item ?? null }
 }
 
 /** What the bonus chest would give you now: { wins, egg }. */
-export const questBonusReward = (profile) => ({ wins: winsForRolls(profile, QUEST_BONUS.winsRolls), egg: true })
+export const questBonusReward = (profile) => ({ wins: winsForPays(profile, QUEST_BONUS.winsPays), egg: true })
 
 /**
  * Counts `amount` of `counter` towards today's quests (adding up, or the best single value
@@ -98,7 +89,7 @@ export function claimQuest(profile, index, now) {
   if (!questDone(quest)) return { ok: false, error: 'Not finished yet' }
   quest.claimed = true
   const tier = QUEST_TIERS[quest.tier]
-  const paid = payReward(profile, { winsRolls: tier.winsRolls, item: tier.item })
+  const paid = payReward(profile, { winsPays: tier.winsPays, item: tier.item })
   return { ok: true, index, ...paid, label: `QUEST DONE: ${questText(quest)}` }
 }
 
@@ -109,7 +100,7 @@ export function claimQuestBonus(profile, now) {
   if (q.bonus) return { ok: false, error: 'Already opened' }
   if (!q.list.every((quest) => quest.claimed)) return { ok: false, error: 'Finish all three first' }
   q.bonus = true
-  const paid = payReward(profile, { winsRolls: QUEST_BONUS.winsRolls, egg: true })
+  const paid = payReward(profile, { winsPays: QUEST_BONUS.winsPays, egg: true })
   return { ok: true, ...paid, label: 'QUEST CHEST OPENED' }
 }
 
@@ -121,17 +112,17 @@ export function claimQuestBonus(profile, now) {
 export function applyStreak(profile, now) {
   const today = dayNumber(now)
   const s = profile.streak
-  if (s.day === today) return { days: s.days, changed: false, broke: false, multiplier: streakMultiplier(s.days) }
+  if (s.day === today) return { days: s.days, changed: false, broke: false, multiplier: loginMultiplier(s.days) }
   const continued = s.day === today - 1
   const broke = !continued && s.days >= 2
   s.days = continued ? s.days + 1 : 1
   s.day = today
   s.best = Math.max(s.best, s.days)
-  return { days: s.days, changed: true, broke, multiplier: streakMultiplier(s.days) }
+  return { days: s.days, changed: true, broke, multiplier: loginMultiplier(s.days) }
 }
 
 /**
- * A launch's lucky gift, LUCKY_CHANCE of the time: picks one (by weight), pays it and
+ * A trophy's lucky gift, LUCKY_CHANCE of the time: picks one (by weight), pays it and
  * returns { label, icon, wins, items }; null if no luck this time.
  */
 export function rollLuckyGift(profile, rand = Math.random) {

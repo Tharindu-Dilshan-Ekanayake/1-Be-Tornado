@@ -32,6 +32,9 @@ const skyFragmentShader = /* glsl */ `
   uniform float glow;
   uniform float clouds;
   uniform float stars;
+  uniform float storm;
+  uniform float flash;
+  uniform float time;
 
   varying vec3 vDirection;
 
@@ -71,6 +74,17 @@ const skyFragmentShader = /* glsl */ `
       float star = step(0.9965, skyHash(cell.xz + cell.y * 17.0));
       color += vec3(star * stars * smoothstep(0.05, 0.4, h));
     }
+
+    // The storm over the cities: heavy dark clouds rolling across, low and close.
+    if (storm > 0.0 && h > -0.08) {
+      vec2 p = dir.xz / (h + 0.3);
+      float n = skyNoise(p * 1.2 + vec2(time * 0.05, time * 0.02)) * 0.55 + skyNoise(p * 3.0 - vec2(time * 0.08, 0.0)) * 0.3 + skyNoise(p * 7.0 + vec2(1.3, time * 0.1)) * 0.15;
+      vec3 dark = mix(vec3(0.13, 0.15, 0.19), vec3(0.4, 0.43, 0.49), n);
+      float cover = storm * smoothstep(0.22, 0.62, n + 0.12) * smoothstep(-0.08, 0.12, h);
+      color = mix(color, dark, cover * 0.88);
+    }
+    // Lightning lights up the whole sky for a moment.
+    color += vec3(0.72, 0.8, 1.0) * flash * (0.3 + 0.7 * smoothstep(-0.1, 0.5, h));
 
     gl_FragColor = vec4(color, 1.0);
     #include <colorspace_fragment>

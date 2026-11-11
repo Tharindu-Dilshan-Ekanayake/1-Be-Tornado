@@ -3,7 +3,7 @@ import { PlayerSession } from '@shared/session'
 
 import { runtime } from '../game/runtime'
 
-const SAVE_KEY = 'tr.save.v1'
+const SAVE_KEY = 'tornado.save.v1'
 const TICK_MS = 100
 const SAVE_MS = 5000
 
@@ -35,6 +35,7 @@ export function createLocalServer({ id, name, onEvent }) {
     // would never see a change (same reference) and could edit server state.
     emit: (type, payload) => onEvent(type, payload ? structuredClone(payload) : payload),
     getPosition: () => runtime.player.position,
+    setPosition: (x, z) => runtime.player.position.set(x, 0, z),
   })
 
   const save = () => {

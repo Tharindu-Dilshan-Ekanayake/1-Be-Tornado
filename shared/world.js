@@ -1,176 +1,97 @@
-import { armGrowth } from './balance.js'
+import { EGGS, PADS, STAGES, TORNADOES } from './balance.js'
 
 /**
- * Lobby layout: every gameplay-relevant position and trigger area.
+ * The world's layout: every gameplay-relevant position and trigger area.
  *
  * Shared by the client (which renders it) and the server (which validates positions
- * against it), so the two can never disagree about where a pad or the roll zone is.
+ * against it), so the two can never disagree about where a zone, a stand or a city is.
  *
- * Units are roughly metres in the lobby (the avatar is 1.8 tall) and yards down the kick field. +X is east, -Z is north, which is
- * "forward" from spawn and the way down the track.
+ * Units are metres (the avatar is 1.8 tall). +X is east, -Z is north: "forward" from the
+ * spawn, and the way along the chain of cities.
  *
- * Seen from spawn: the kick zone and the field beyond it straight ahead (north), the
- * treadmills along the right (east) side, the ball shop on the left (west),
- * the eggs in a row back on the left, the Volcano egg front right, the leaderboards
- * behind. Grandstands ring the whole plaza, like a football stadium.
+ * The lobby is a floating island; north of it a bridge leads to the first city's gate,
+ * and every city is an island of its own, each one bridge further north. Seen from the
+ * spawn: the gate to the cities straight ahead, the tornado showroom on the left (west),
+ * the Storm Zones on the right (east), the eggs and leaderboards behind you.
  *
  * Rects are `{ minX, maxX, minZ, maxZ }` on the ground plane.
  */
 
-/**
- * The lobby is a small canyon: you spawn at its south end and a candy path runs north,
- * 90 m, to the launch posts. The pull-up bars stand close together along the east side
- * (each better than the last as you go north) and the arm shop along the west, both
- * running up alongside the 50 m STRETCH LANE that leads back from the posts; the eggs and
- * leaderboards are back by the spawn. Seen from spawn: the path and the lane ahead.
- */
-export const SPAWN = { x: 0, z: 50 }
+export const LOBBY = { minX: -56, maxX: 56, minZ: -46, maxZ: 46 }
+export const SPAWN = { x: 0, z: 30 }
 
-/** The flat, walkable plaza. Hills surround it on every side but the track. */
-export const PLAZA = { minX: -48, maxX: 38, minZ: -40, maxZ: 69 }
-/** The path down its middle (half its width). */
-export const PATH_HALF = 5
+// --- Cities -------------------------------------------------------------------------
 
-// --- The track ----------------------------------------------------------------------
+/** Half the side of every city island, the bridges between them, and how far apart. */
+export const STAGE_HALF = 70
+export const BRIDGE_LEN = 30
+export const BRIDGE_HALF = 7
+export const STAGE_PITCH = STAGE_HALF * 2 + BRIDGE_LEN
+export const STAGE_COUNT = STAGES.length
 
-/**
- * The start of the field: the plaza's north edge, where the kick field starts. Track metre
- * m is m yards along the field from here.
- */
-export const TRACK_START_Z = PLAZA.minZ
-/** How steeply the kick field drops away from the start: 0, dead level all the way. */
-export const SLOPE_ANGLE = 0
-/** Half the width of the canyon floor. */
-export const CANYON_HALF_WIDTH = 16
+/** The centre (z) of city `i`; every city is centred on x = 0. */
+export const stageCenterZ = (i) => LOBBY.minZ - BRIDGE_LEN - STAGE_HALF - i * STAGE_PITCH
 
-/** The yellow LAUNCH PAD (the template's roll zone) at the runway's mouth: launches go from here. */
-export const ROLL_ZONE = { minX: -13, maxX: 13, minZ: -40, maxZ: -21 }
-/** Where you're put back after a roll: just short of the zone, facing it. */
-export const ROLL_RETURN = { x: 0, z: -27 }
-
-/**
- * The launch posts: a pair of posts standing at the front of the LAUNCH PAD, either side
- * of the runway's middle, `halfGap` out. You grab their tops standing at LAUNCH_STAND
- * (GRAB_RADIUS of it lets you), walk back towards the plaza to stretch your arms, and fly
- * out between them. Walking back takes you at most MAX_PULL behind the stand, down the
- * STRETCH LANE - still on the pad as far as the server's launch check goes.
- */
-export const LAUNCH_POSTS = { x: 0, z: -38.8, halfGap: 0.8 }
-export const LAUNCH_STAND = { x: LAUNCH_POSTS.x, z: LAUNCH_POSTS.z + 1.1 }
-export const GRAB_RADIUS = 3.5
-export const MAX_PULL = 50
-/**
- * The STRETCH LANE: the long rubber strip running back from the stand spot, MAX_PULL long,
- * that you walk down holding the posts. Part of the launch pad as far as launching goes.
- */
-export const STRETCH_LANE = { minX: LAUNCH_STAND.x - 3, maxX: LAUNCH_STAND.x + 3, minZ: LAUNCH_STAND.z, maxZ: LAUNCH_STAND.z + MAX_PULL + 1.5 }
-
-/**
- * How far back arms `tireId` let you walk at `level` before they're at full stretch: a few
- * metres with your first arms, the whole 50 m lane with the best ones, well levelled.
- */
-export function maxPullFor(tireId, level = 1, cap = 15) {
-  return 3 + (MAX_PULL - 3) * armGrowth(tireId, level, cap)
+/** City `i`'s island. */
+export function stageRect(i) {
+  const cz = stageCenterZ(i)
+  return { minX: -STAGE_HALF, maxX: STAGE_HALF, minZ: cz - STAGE_HALF, maxZ: cz + STAGE_HALF }
 }
 
-/** Metres you're stretched back at (x, z): how far behind the stand spot, along the lane. */
-export const pullBackAt = (x, z) => (inRect(STRETCH_LANE, x, z, 1) ? Math.max(0, z - LAUNCH_STAND.z) : 0)
-export const nearLaunchPosts = (x, z, margin = 0) => Math.hypot(x - LAUNCH_STAND.x, z - LAUNCH_STAND.z) <= GRAB_RADIUS + margin
-/** The start arch's pillars, either side of the zone. */
-export const ROLL_ARCH = { x: 15.5, z: -37 }
+/** Where city `i`'s gate stands: across its bridge, at the island's south edge. */
+export const gateZ = (i) => stageCenterZ(i) + STAGE_HALF
 
-/** Walkable ground; the controller clamps the player into it. Nothing past the start. */
-export const WALKABLE = [PLAZA]
-
-// --- Training pads ------------------------------------------------------------------
-
-/**
- * Treadmills line the east side of the plaza, south to north: a round mat to run on
- * (the pad: standing on it is training, facing east) with the treadmill's belt on it and
- * its console and multiplier backboard just beyond to the east, then a running track.
- */
-/** Seven treadmills, then Palm Beach's two beach treadmills at the north end of the row. */
-export const PAD_COUNT = 9
-export const PAD_PITCH = 7
-/** Radius of a pad's top: standing within it is training. */
-export const PAD_RADIUS = 2.7
-/** The pads' centre line, and their tops, a step up from the plaza. */
-export const PAD_X = 24
-export const PAD_HEIGHT = 0.5
-/** Pad 0 (the free one) is the southernmost, nearest spawn; the rest run north. */
-const PAD0_Z = 36
-
-export const padCenterZ = (index) => PAD0_Z - index * PAD_PITCH
-
-/**
- * Each pull-up bar is higher than the last: the first hangs just over your head, the best
- * ones tower - so the later you train, the more your rubber arms have to stretch.
- */
-export const padBarHeight = (index) => 2.6 + 0.62 * Math.max(0, index)
-
-/**
- * Each pad's console area, on the ground east of it: these constants (named for the
- * template's table, kept so the server's colliders and saves don't change) bound the
- * solid block of console, handrails and backboard drawn there. Training, you face it (east)
- * and run.
- */
-export const TABLE_LENGTH = 4.2
-export const TABLE_WIDTH = 2.4
-export const TABLE_HEIGHT = 1.05
-/** The solid block's near (west) end, its middle, and its far end beyond the backboard. */
-export const TABLE_NEAR_X = PAD_X + PAD_RADIUS + 0.05
-export const TABLE_X = TABLE_NEAR_X + TABLE_LENGTH / 2
-export const ROBOT_X = TABLE_NEAR_X + TABLE_LENGTH + 0.6
-/** Each pad's running track: its floor runs back to a low barrier behind the backboard, this wide either side. */
-export const COURT_BACK_X = ROBOT_X + 1.5
-export const COURT_HALF = 3.1
-/** Facing the treadmill's console: east. (Yaw 0 faces +Z, south.) */
-export const PAD_YAW = Math.PI / 2
-
-/** The square round pad `index`: its raised deck (walkable, and a wall while locked). */
-export function padRect(index) {
-  const cz = padCenterZ(index)
-  const r = PAD_RADIUS + 0.3
-  return { minX: PAD_X - r, maxX: PAD_X + r, minZ: cz - r, maxZ: cz + r }
+/** The bridge leading into city `i` (from the lobby, or from city i-1). */
+export function bridgeRect(i) {
+  const north = gateZ(i)
+  const south = i === 0 ? LOBBY.minZ : stageRect(i - 1).minZ
+  return { minX: -BRIDGE_HALF, maxX: BRIDGE_HALF, minZ: north, maxZ: south }
 }
 
-// --- Ball shop ----------------------------------------------------------------------
+/** Where a teleport into city `i` puts you: just inside its gate, facing north. */
+export const stageEntry = (i) => ({ x: 0, z: gateZ(i) - 32 })
 
 /**
- * The ball shop: an open-air yard west of the plaza with two display stages, the
- * first twelve balls on the low front one and the next twelve on the higher back one,
- * and a big BALL SHOP sign behind. Both stages are low enough to walk straight onto.
+ * Which city (x, z) is in: its index if on its island, -1 anywhere else (the lobby, a
+ * bridge, off the edge).
  */
-export const SHOP = { minX: -42, maxX: -16, minZ: -18, maxZ: 36 }
-export const SHOP_STAGES = [
-  { minX: -28, maxX: -17.5, minZ: -17, maxZ: 35, height: 0.5 },
-  { minX: -41, maxX: -30.5, minZ: -17, maxZ: 35, height: 1 },
-]
-/** The sign along the back (west) edge, facing the plaza, high enough to clear the labels. */
-export const SHOP_SIGN = { x: -42.6, minZ: -14, maxZ: 32, top: 16 }
-/** Which way the sign faces: +1 east (towards the plaza). */
-export const SHOP_SIGN_FACING = 1
-export const STAND_SIZE = 4
-
-/** Rows of display stands, nearest the plaza first: two rows on each stage. */
-const STAND_ROWS_X = [-20, -25.5, -33, -38.5]
-/** Stands per row, and how far apart along it. */
-const STANDS_PER_ROW = 6
-const STAND_PITCH = 9
+export function stageAt(x, z) {
+  if (z >= LOBBY.minZ) return -1
+  const i = Math.floor((LOBBY.minZ - z) / STAGE_PITCH)
+  if (i < 0 || i >= STAGE_COUNT) return -1
+  const r = stageRect(i)
+  return z <= r.maxZ && z >= r.minZ && Math.abs(x) <= STAGE_HALF ? i : -1
+}
 
 /**
- * Twenty-four stands, six to a row. `row` (0-3, front to back) lets the labels above
- * them step up so nearer ones don't hide farther ones.
+ * The city (x, z) is nearest along the chain, for what to show: -1 in the lobby, else the
+ * city whose island or bridge you're on.
  */
-export const TIRE_STANDS = Array.from({ length: 24 }, (_, i) => {
+export function stageNear(z) {
+  if (z >= LOBBY.minZ - 4) return -1
+  return Math.min(STAGE_COUNT - 1, Math.max(0, Math.floor((LOBBY.minZ - z) / STAGE_PITCH)))
+}
+
+// --- Tornado showroom ----------------------------------------------------------------
+
+/**
+ * Two rows of display stands down the lobby's west side, each with a tornado spinning on
+ * it: the first ten on the row nearer the middle, the next ten behind them. Standing on
+ * a stand's glowing BUY spot (on the aisle side) buys or equips that tornado.
+ */
+const STAND_ROWS_X = [-27, -43]
+const STANDS_PER_ROW = 10
+const STAND_PITCH = 7.6
+export const STAND_SIZE = 4.4
+/** The BUY spot: this far from the stand towards the aisle, this big. */
+export const BUY_SPOT_OFFSET = 4.6
+export const BUY_SPOT_SIZE = 3.2
+
+export const TORNADO_STANDS = TORNADOES.map((_, i) => {
   const row = Math.floor(i / STANDS_PER_ROW)
-  return {
-    index: i,
-    row,
-    x: STAND_ROWS_X[row],
-    z: (SHOP.minZ + SHOP.maxZ) / 2 - (STAND_PITCH * (STANDS_PER_ROW - 1)) / 2 + (i % STANDS_PER_ROW) * STAND_PITCH,
-    y: SHOP_STAGES[row < 2 ? 0 : 1].height,
-  }
+  const x = STAND_ROWS_X[row]
+  const z = 34 - (i % STANDS_PER_ROW) * STAND_PITCH
+  return { index: i, row, x, z, spotX: x + BUY_SPOT_OFFSET }
 })
 
 export const standRect = (stand) => ({
@@ -179,131 +100,135 @@ export const standRect = (stand) => ({
   minZ: stand.z - STAND_SIZE / 2,
   maxZ: stand.z + STAND_SIZE / 2,
 })
-
-// --- Eggs, showcases, leaderboards --------------------------------------------------
-
-/**
- * The egg row stands back on the left (south-west), the Sphinx at its end; the big
- * Volcano egg has a spot of its own, front right on the way to the kick zone.
- */
-export const EGG_STANDS = [
-  { eggId: 'basic', x: -10, z: 46 },
-  { eggId: 'meadow', x: -18, z: 46 },
-  { eggId: 'sunset', x: -26, z: 46 },
-  { eggId: 'unicorn', x: -34, z: 46 },
-  { eggId: 'volcano', x: 10, z: -14, big: true },
-  // Palm Beach's Beach Egg, the Volcano egg's twin across the plaza (hatches in Palm
-  // Beach only; in World 1 it stands locked, a taste of what's through the portal).
-  { eggId: 'beach', x: -10, z: -14, big: true },
-]
-export const EGG_TRIGGER_RADIUS = 4.2
-
-/** Limited premium pet on display. */
-export const SPHINX_STAND = { x: -43, z: 46 }
-
-/** Four boards along the back of the plaza, as in the reference. */
-export const LEADERBOARDS = [
-  { id: 'rebirths', x: -18, z: 66.5 },
-  { id: 'wins', x: -6, z: 66.5 },
-  { id: 'distance', x: 6, z: 66.5 },
-  { id: 'playtime', x: 18, z: 66.5 },
-]
-
-/** The world portal beside the start arch, to the west. Name and Wins in balance.js. */
-export const PORTALS = [{ id: 'world2', x: -28, z: -34, radius: 3.4 }]
-
-export const FREE_REWARD = { x: 12, z: 51, radius: 3 }
-
-/**
- * Palm Beach's Secret Star (balance SECRET_STAR): tucked away behind the middle of the
- * leaderboards at the back of the plaza, where the camera never looks unless you go
- * round. Picked up within `radius`, in Palm Beach only.
- */
-export const STAR = { x: -6, z: 68.2, y: 1.4, radius: 1.8 }
-
-// --- Collision ----------------------------------------------------------------------
-
-const box = (x, z, halfX, halfZ) => ({
-  minX: x - halfX,
-  maxX: x + halfX,
-  minZ: z - halfZ,
-  maxZ: z + halfZ,
+export const buySpotRect = (stand) => ({
+  minX: stand.spotX - BUY_SPOT_SIZE / 2,
+  maxX: stand.spotX + BUY_SPOT_SIZE / 2,
+  minZ: stand.z - BUY_SPOT_SIZE / 2,
+  maxZ: stand.z + BUY_SPOT_SIZE / 2,
 })
 
-/** Solid, never-changing obstacles. Locked pads add their own walls at runtime. */
+// --- Storm Zones (training pads) ---------------------------------------------------
+
+/** Glowing storm circles down the east side, the free one nearest the spawn. */
+export const PAD_COUNT = PADS.length
+export const PAD_X = 33
+export const PAD_RADIUS = 3.8
+const PAD0_Z = 31
+const PAD_PITCH = 10.2
+export const padCenterZ = (index) => PAD0_Z - index * PAD_PITCH
+
+/** The square around pad `index`: a wall while it's locked. */
+export function padRect(index) {
+  const cz = padCenterZ(index)
+  const r = PAD_RADIUS + 0.2
+  return { minX: PAD_X - r, maxX: PAD_X + r, minZ: cz - r, maxZ: cz + r }
+}
+
+// --- Eggs, leaderboards, the free reward ---------------------------------------------
+
+/** The egg stands, in a row behind the spawn on the east; the Volcano egg is the big one. */
+export const EGG_STANDS = Object.keys(EGGS).map((eggId, i) => ({
+  eggId,
+  x: 8 + i * 8.5,
+  z: 41,
+  big: eggId === 'volcano',
+}))
+export const EGG_TRIGGER_RADIUS = 4.2
+
+/** Four boards across the back of the lobby, behind the spawn on the west. */
+export const LEADERBOARDS = [
+  { id: 'rebirths', x: -40, z: 43.5 },
+  { id: 'wins', x: -30, z: 43.5 },
+  { id: 'destroyed', x: -20, z: 43.5 },
+  { id: 'playtime', x: -10, z: 43.5 },
+]
+
+export const FREE_REWARD = { x: -12, z: 40, radius: 3 }
+
+/** The lobby's gate to the cities: an arch over the bridge, pillars either side. */
+export const LOBBY_GATE = { z: LOBBY.minZ + 1, halfGap: BRIDGE_HALF + 1.4 }
+
+// --- Collision & walking ------------------------------------------------------------
+
+const box = (x, z, halfX, halfZ) => ({ minX: x - halfX, maxX: x + halfX, minZ: z - halfZ, maxZ: z + halfZ })
+
+/** Solid, never-changing obstacles in the lobby. Locked zones add their own at runtime. */
 export const STATIC_COLLIDERS = [
-  // The ball shop's sign.
-  { minX: SHOP_SIGN.x - 0.5, maxX: SHOP_SIGN.x + 0.5, minZ: SHOP_SIGN.minZ - 0.5, maxZ: SHOP_SIGN.maxZ + 0.5 },
-  // Egg pedestals.
-  ...EGG_STANDS.map((s) => box(s.x, s.z, s.big ? 2.1 : 1.6, s.big ? 2.1 : 1.6)),
-  box(SPHINX_STAND.x, SPHINX_STAND.z, 3, 3),
-  ...LEADERBOARDS.map((b) => box(b.x, b.z, 4.6, 0.5)),
+  ...TORNADO_STANDS.map(standRect),
+  ...EGG_STANDS.map((s) => box(s.x, s.z, s.big ? 2.2 : 1.7, s.big ? 2.2 : 1.7)),
+  ...LEADERBOARDS.map((b) => box(b.x, b.z, 4.4, 0.5)),
   box(FREE_REWARD.x, FREE_REWARD.z, 1.4, 1.4),
-  // The treadmills' console blocks, and the barrier across each running track's back.
-  ...Array.from({ length: PAD_COUNT }, (_, i) => ({
-    minX: TABLE_NEAR_X,
-    maxX: ROBOT_X + 0.7,
-    minZ: padCenterZ(i) - TABLE_WIDTH / 2,
-    maxZ: padCenterZ(i) + TABLE_WIDTH / 2,
-  })),
-  ...Array.from({ length: PAD_COUNT }, (_, i) => box(COURT_BACK_X, padCenterZ(i), 0.15, COURT_HALF)),
-  // Each portal ring's base; the swirl itself is walk-through.
-  ...PORTALS.flatMap((p) => [box(p.x - p.radius, p.z, 0.6, 0.8), box(p.x + p.radius, p.z, 0.6, 0.8)]),
-  // The launch posts (you fly out between them, never walk through them).
-  box(LAUNCH_POSTS.x - LAUNCH_POSTS.halfGap, LAUNCH_POSTS.z, 0.2, 0.2),
-  box(LAUNCH_POSTS.x + LAUNCH_POSTS.halfGap, LAUNCH_POSTS.z, 0.2, 0.2),
-  // The start arch's pillars.
-  box(-ROLL_ARCH.x, ROLL_ARCH.z, 1, 1),
-  box(ROLL_ARCH.x, ROLL_ARCH.z, 1, 1),
-  // The canyon's rims either side of its mouth.
-  { minX: PLAZA.minX, maxX: -CANYON_HALF_WIDTH - 1, minZ: PLAZA.minZ - 1, maxZ: PLAZA.minZ + 0.6 },
-  { minX: CANYON_HALF_WIDTH + 1, maxX: PLAZA.maxX, minZ: PLAZA.minZ - 1, maxZ: PLAZA.minZ + 0.6 },
+  box(-LOBBY_GATE.halfGap, LOBBY_GATE.z, 1.2, 1.2),
+  box(LOBBY_GATE.halfGap, LOBBY_GATE.z, 1.2, 1.2),
 ]
-
-/** Raised floors the player stands on, as rects with a height. */
-export const PLATFORMS = [
-  ...SHOP_STAGES.map((s) => ({ ...s })),
-  ...Array.from({ length: PAD_COUNT }, (_, i) => ({ ...padRect(i), height: PAD_HEIGHT })),
-]
-
-// --- Helpers ------------------------------------------------------------------------
 
 export const inRect = (r, x, z, margin = 0) =>
   x >= r.minX - margin && x <= r.maxX + margin && z >= r.minZ - margin && z <= r.maxZ + margin
 
-/** Whether (x, z) is on training pad `index`'s top, give or take `margin`. */
+/**
+ * Walkable ground for a player who has opened cities up to `unlocked` (0-based): the
+ * lobby, every open city's island and the bridges up to the first closed gate - you can
+ * walk right up to it, and no further.
+ */
+export function walkableRects(unlocked) {
+  const rects = [LOBBY]
+  const open = Math.min(STAGE_COUNT - 1, Math.max(0, unlocked))
+  for (let i = 0; i <= Math.min(STAGE_COUNT - 1, open + 1); i += 1) {
+    const bridge = bridgeRect(i)
+    if (i > open) bridge.minZ = gateZ(i) + 1.6
+    rects.push(bridge)
+    if (i <= open) rects.push(stageRect(i))
+  }
+  return rects
+}
+
+/** Clamps (x, z) into the walkable ground for `unlocked`, writing the nearest point to `out`. */
+export function clampToWalkable(x, z, unlocked, out = { x: 0, z: 0 }) {
+  let best = Infinity
+  const open = Math.min(STAGE_COUNT - 1, Math.max(0, unlocked))
+  const consider = (r) => {
+    const cx = Math.min(r.maxX, Math.max(r.minX, x))
+    const cz = Math.min(r.maxZ, Math.max(r.minZ, z))
+    const d = (cx - x) ** 2 + (cz - z) ** 2
+    if (d < best) {
+      best = d
+      out.x = cx
+      out.z = cz
+    }
+  }
+  consider(LOBBY)
+  if (best === 0) return out
+  // Only the cities near (x, z) can be nearest: no need to walk the whole chain.
+  const near = z < LOBBY.minZ ? Math.floor((LOBBY.minZ - z) / STAGE_PITCH) : 0
+  for (let i = Math.max(0, near - 1); i <= Math.min(STAGE_COUNT - 1, open + 1, near + 1); i += 1) {
+    const bridge = bridgeRect(i)
+    if (i > open) bridge.minZ = gateZ(i) + 1.6
+    consider(bridge)
+    if (i <= open) consider(stageRect(i))
+    if (best === 0) break
+  }
+  // Far past where you're allowed (a stale position, a cheat): back to the last open city.
+  if (best === Infinity) consider(stageRect(open))
+  return out
+}
+
+/** Whether (x, z) is on Storm Zone `index`, give or take `margin`. */
 export const onPad = (index, x, z, margin = 0) => Math.hypot(x - PAD_X, z - padCenterZ(index)) <= PAD_RADIUS + margin
 
-/** Index of the training pad under (x, z), or -1. */
+/** Index of the Storm Zone under (x, z), or -1. */
 export function padAt(x, z, margin = 0) {
+  if (Math.abs(x - PAD_X) > PAD_RADIUS + margin + 1) return -1
   for (let i = 0; i < PAD_COUNT; i += 1) {
     if (onPad(i, x, z, margin)) return i
   }
   return -1
 }
 
-export const inRollZone = (x, z, margin = 0) => inRect(ROLL_ZONE, x, z, margin) || inRect(STRETCH_LANE, x, z, margin)
-
-/** The portal whose swirl (x, z) is in, give or take `margin`, or null. */
-export function portalAt(x, z, margin = 0) {
-  for (const p of PORTALS) {
-    if (Math.hypot(x - p.x, z - p.z) < p.radius + margin) return p
-  }
-  return null
-}
-
-/**
- * Whether a move from `from` to `to` is the hop back after a roll: off the roll zone
- * onto ROLL_RETURN. Faster than walking, so the server's speed check lets exactly this
- * one through.
- */
-export const isRollReturn = (from, to) =>
-  inRollZone(from.x, from.z, 2) && Math.hypot(to.x - ROLL_RETURN.x, to.z - ROLL_RETURN.z) < 2.5
-
-/** Index of the tire stand under (x, z), or -1. */
-export function standAt(x, z) {
-  for (const stand of TIRE_STANDS) {
-    if (inRect(standRect(stand), x, z)) return stand.index
+/** Index of the tornado stand whose BUY spot is under (x, z), or -1. */
+export function standAt(x, z, margin = 0) {
+  if (z < LOBBY.minZ || x > -15) return -1
+  for (const stand of TORNADO_STANDS) {
+    if (inRect(buySpotRect(stand), x, z, margin)) return stand.index
   }
   return -1
 }
@@ -317,31 +242,5 @@ export function eggStandNear(x, z) {
   return null
 }
 
-/** Height of the floor at (x, z): raised platforms, else the ground at 0. */
-export function groundHeightAt(x, z) {
-  let h = 0
-  for (const p of PLATFORMS) {
-    if (p.height > h && inRect(p, x, z)) h = p.height
-  }
-  return h
-}
-
-/** Clamps (x, z) into the walkable union, returning the nearest walkable point. */
-export function clampToWalkable(x, z, out = { x: 0, z: 0 }) {
-  let best = Infinity
-  for (const r of WALKABLE) {
-    const cx = Math.min(r.maxX, Math.max(r.minX, x))
-    const cz = Math.min(r.maxZ, Math.max(r.minZ, z))
-    const d = (cx - x) ** 2 + (cz - z) ** 2
-    if (d < best) {
-      best = d
-      out.x = cx
-      out.z = cz
-      if (d === 0) break
-    }
-  }
-  return out
-}
-
-/** Fastest a player can legitimately move, for the server's anti-teleport check. */
-export const MAX_MOVE_SPEED = 14
+/** Fastest a player can legitimately move (the best speed upgrades), for the server's anti-teleport check. */
+export const MAX_MOVE_SPEED = 24

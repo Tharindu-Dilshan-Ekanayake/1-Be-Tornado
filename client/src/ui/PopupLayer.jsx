@@ -30,7 +30,7 @@ export function PopupLayer() {
           // restyles this popup alone rather than invalidating the whole page.
           style={{ display: 'none', fontSize: u(40), gap: u(4), willChange: 'transform, opacity', contain: 'layout style' }}
         >
-          <img src={iconUrl('heart')} alt="" style={{ width: u(46), height: u(46) }} />
+          <img src={iconUrl('bolt')} alt="" style={{ width: u(46), height: u(46) }} />
           <span className="pp-text">
             <span data-popup-text aria-hidden="true" className="pp-text-stroke" style={{ WebkitTextStrokeWidth: u(9) }} />
             <span
