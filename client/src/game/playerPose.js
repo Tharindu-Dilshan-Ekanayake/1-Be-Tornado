@@ -317,6 +317,25 @@ function cheering(time, w) {
 }
 
 /**
+ * Riding inside your tornado: whirled round by the wind, arms thrown up and out and
+ * flailing, legs dangling and kicking, the body tipping one way and the other.
+ */
+function riding(time, w) {
+  const flail = Math.sin(time * 9)
+  const flap = Math.sin(time * 6.3 + 1)
+  add('ArmL1', -2.5 + flail * 0.35, 0.75 * OUT_L, 0, w)
+  add('ArmR1', -2.5 - flail * 0.35, 0.75 * OUT_R, 0, w)
+  add('ArmL2', -0.3 + flap * 0.2, 0, 0, w)
+  add('ArmR2', -0.3 - flap * 0.2, 0, 0, w)
+  add('LegL1', -0.35 + Math.sin(time * 7) * 0.4, 0.18 * OUT_L, 0, w)
+  add('LegR1', -0.35 - Math.sin(time * 7) * 0.4, 0.18 * OUT_R, 0, w)
+  add('LegL2', 0.5 + Math.max(0, Math.sin(time * 7)) * 0.5, 0, 0, w)
+  add('LegR2', 0.5 + Math.max(0, -Math.sin(time * 7)) * 0.5, 0, 0, w)
+  add('Spine1', -0.12, Math.sin(time * 2.1) * 0.18, 0, w)
+  add('Neck1', -0.2, 0, Math.sin(time * 3.3) * 0.3, w)
+}
+
+/**
  * @param {{ time?: number, speed?: number, maxSpeed?: number, grounded?: boolean,
  *   vy?: number, stride?: number, run?: number, grip?: number, strain?: number,
  *   pitch?: number, fly?: number, reach?: number, sprawl?: number, cheer?: number,
@@ -359,6 +378,12 @@ export function computePose(motion) {
   pose.lift = 0
   pose.stretchL = 1
   pose.stretchR = 1
+
+  // Inside your tornado (always, in this game): whirled round, flailing.
+  if (motion.ride) {
+    riding(time, clamp01(motion.ride))
+    return pose
+  }
 
   // A launch: holding the posts (upright or diving), flying, sprawled, cheering.
   if (grip >= 0) {

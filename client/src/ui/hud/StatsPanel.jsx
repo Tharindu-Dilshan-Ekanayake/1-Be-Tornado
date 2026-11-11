@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 
-import { crowdBonus, streakMultiplier } from '@shared/balance'
+import { crowdBonus, loginMultiplier } from '@shared/balance'
 import { formatClock, formatNumber } from '@shared/format'
-import { streakDays } from '@shared/logic'
+import { loginDays } from '@shared/logic'
 
 import { remotePlayers } from '../../net/remotePlayers'
 import { useGame } from '../../store/game'
@@ -67,7 +67,7 @@ let streakToastShown = false
  * others share your server. Says today's streak news once, a moment after the game is up.
  */
 function Bonuses() {
-  const days = useGame((s) => streakDays(s.profile, Date.now()))
+  const days = useGame((s) => loginDays(s.profile, Date.now()))
   const news = useGame((s) => (s.profileLoaded && s.playable ? s.session.streak : null))
   const showToast = useGame((s) => s.showToast)
   // Other players here (the ones drawn: your world's), counted every couple of seconds.
@@ -78,16 +78,16 @@ function Bonuses() {
     if (!news || streakToastShown) return undefined
     streakToastShown = true
     const id = setTimeout(() => {
-      if (news.broke) showToast('Your streak ended... DAY 1 again - play tomorrow for x1.1 Wins!')
-      else if (news.days >= 2) showToast(`DAY ${news.days} STREAK! x${news.multiplier.toFixed(1)} Wins on every launch today!`)
-      else showToast('DAY 1 STREAK! Come back tomorrow for x1.1 Wins on every launch!')
+      if (news.broke) showToast('Your login streak ended... DAY 1 again - play tomorrow for x1.1 Wins!')
+      else if (news.days >= 2) showToast(`DAY ${news.days} STREAK! x${news.multiplier.toFixed(1)} Wins today!`)
+      else showToast('DAY 1 STREAK! Come back tomorrow for x1.1 Wins!')
     }, 2500)
     return () => clearTimeout(id)
   }, [news, showToast])
 
   return (
     <>
-      {days > 0 && <Chip icon="flame" text={`Day ${days}`} bonus={`x${streakMultiplier(days).toFixed(1)}`} />}
+      {days > 0 && <Chip icon="flame" text={`Day ${days}`} bonus={`x${loginMultiplier(days).toFixed(1)}`} />}
       {others > 0 && <Chip icon="friends" text={`${others} here`} bonus={`+${Math.round((crowdBonus(others) - 1) * 100)}%`} />}
     </>
   )
@@ -95,7 +95,7 @@ function Bonuses() {
 
 /** Top-left, as in the reference: Rebirths, then Wins, with any running potions and bonuses under them. */
 export function StatsPanel() {
-  const wins = useGame((s) => s.profile.wins - s.pendingWins)
+  const wins = useGame((s) => s.profile.wins)
   const rebirths = useGame((s) => s.profile.rebirths)
 
   return (

@@ -1,7 +1,6 @@
-import { fireBurst } from './game/fx/fxQueue'
+import { stageLayout } from '@shared/cities'
+
 import { runtime } from './game/runtime'
-import { showHit } from './game/roll/hudLink'
-import { roll } from './game/roll/rollControl'
 import { actions } from './net/actions'
 import { remotePlayers } from './net/remotePlayers'
 import { useGame } from './store/game'
@@ -14,5 +13,5 @@ import { useQuality } from './store/quality'
 export function installDebugHooks() {
   if (typeof window === 'undefined') return
   if (!new URLSearchParams(window.location.search).has('debug')) return
-  window.__pp = { runtime, useGame, useQuality, actions, remotePlayers, roll, fx: { fireBurst, showHit } }
+  window.__pp = { runtime, useGame, useQuality, actions, remotePlayers, stageLayout }
 }

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 
-import { PADS, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
-import { formatNumber } from '@shared/format'
+import { PADS, SHOP, TORNADOES } from '@shared/balance'
+import { formatMultiplier, formatNumber } from '@shared/format'
 import { isPadUnlocked } from '@shared/logic'
 
 import { standState } from '../../game/labels/lobbyLabels'
@@ -16,61 +16,33 @@ import { u } from './style'
  */
 function usePrompt() {
   const stand = useGame((s) => s.zone.stand)
-  const owned = useGame((s) => s.profile.ownedTires)
-  const equipped = useGame((s) => s.profile.equippedTire)
+  const owned = useGame((s) => s.profile.ownedTornadoes)
+  const equipped = useGame((s) => s.profile.equippedTornado)
   const atFreeReward = useGame((s) => s.zone.freeReward)
   const freeTaken = useGame((s) => s.session.freeRewardTaken)
-  const padNear = useGame((s) => s.zone.padNear)
-  const padLocked = useGame((s) => s.zone.padNear >= 0 && !isPadUnlocked(s.profile, s.zone.padNear))
-  const atSphinx = useGame((s) => s.zone.sphinx)
-  const atPortal = useGame((s) => s.zone.portal)
-  const wins = useGame((s) => s.profile.wins)
-  const rebirths = useGame((s) => s.profile.rebirths)
-  const inWorld = useGame((s) => s.profile.world)
-  const unlocked = useGame((s) => s.profile.world2Unlocked)
-
-  // Walking into the portal takes you through (ticker.js); this says where to.
-  if (atPortal) {
-    const world = WORLD_PORTALS[atPortal]
-    if (inWorld === 1) return { title: WORLDS[0].name, action: 'Step out and back in to go home', run: null }
-    if (unlocked || (rebirths >= world.rebirths && wins >= world.wins)) {
-      return { title: world.name, action: `x${WORLDS[1].wins} Wins on every launch!`, run: null }
-    }
-    if (rebirths < world.rebirths) return { title: world.name, action: `Needs ${world.rebirths} Rebirths (you have ${rebirths})`, run: null }
-    return { title: world.name, action: `Needs ${formatNumber(world.wins)} Wins (you have ${formatNumber(wins)})`, run: null }
-  }
-
-  if (atSphinx) {
-    return { title: 'Sphinx - Limited!', action: `Buy - ${formatNumber(SHOP.sphinx.price)} Wins`, run: () => buy('sphinx') }
-  }
+  const pad = useGame((s) => s.zone.pad)
+  const padLocked = useGame((s) => s.zone.pad >= 0 && !isPadUnlocked(s.profile, s.zone.pad))
 
   if (padLocked) {
-    const pad = PADS[padNear]
-    const title = `${pad.name} - ${formatNumber(pad.mult)}x Power`
-    if (pad.product) {
-      return { title, action: `Unlock - ${formatNumber(SHOP[pad.product].price)} Wins`, run: () => buy(pad.product) }
-    }
-    if (pad.world !== undefined && (inWorld || 0) !== pad.world) {
-      return { title, action: `Works in ${WORLDS[pad.world].name} only - go through the portal!`, run: null }
-    }
-    const word = pad.rebirths === 1 ? 'Rebirth' : 'Rebirths'
-    return { title, action: `Locked: needs ${pad.rebirths} ${word}`, run: null }
+    const info = PADS[pad]
+    const title = `${info.name} - x${formatNumber(info.mult)} Power`
+    if (info.product) return { title, action: `Unlock - ${formatNumber(SHOP[info.product].price)} Wins`, run: () => buy(info.product) }
+    const word = info.rebirths === 1 ? 'Rebirth' : 'Rebirths'
+    return { title, action: `Locked: needs ${info.rebirths} ${word}`, run: null }
   }
 
   if (atFreeReward) {
-    return freeTaken
-      ? { title: 'Free Reward', action: 'Come back next time!', run: null }
-      : { title: 'Free Reward', action: 'Claim', run: () => actions.claimFreeReward() }
+    return freeTaken ? { title: 'Free Reward', action: 'Come back next time!', run: null } : { title: 'Free Reward', action: 'Claim', run: () => actions.claimFreeReward() }
   }
 
   if (stand >= 0) {
-    const tire = TIRES[stand]
-    const title = `${tire.name} - +${formatNumber(tire.power)} Power`
-    const state = standState({ ownedTires: owned, equippedTire: equipped }, stand)
+    const t = TORNADOES[stand]
+    const title = `${t.name} - ${formatMultiplier(t.power)} Power`
+    const state = standState({ ownedTornadoes: owned, equippedTornado: equipped }, stand)
     if (state === 'equipped') return { title, action: 'Equipped', run: null }
-    if (state === 'owned') return { title, action: 'Equip', run: () => actions.equipTire(tire.id) }
-    if (state === 'locked') return { title, action: `Buy the ${TIRES[stand - 1].name} first`, run: null }
-    return { title, action: `Buy - ${formatNumber(tire.cost)} Wins`, run: () => actions.buyTire(tire.id) }
+    if (state === 'owned') return { title, action: 'Equip', run: () => actions.equipTornado(t.id) }
+    if (state === 'locked') return { title, action: `Buy the ${TORNADOES[stand - 1].name} first`, run: null }
+    return { title, action: `Buy - ${formatNumber(t.cost)} Wins`, run: () => actions.buyTornado(t.id) }
   }
   return null
 }
@@ -81,7 +53,7 @@ function usePrompt() {
  */
 export function InteractPrompt() {
   const prompt = usePrompt()
-  const busy = useGame((s) => Boolean(s.roll || s.rollResult || s.panel))
+  const busy = useGame((s) => Boolean(s.panel))
   const run = !busy ? prompt?.run : null
 
   useEffect(() => {

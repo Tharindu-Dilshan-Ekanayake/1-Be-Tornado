@@ -1,8 +1,8 @@
 import { Vector3 } from 'three'
 
-import { createRideState } from '../game/roll/path'
+import { BASE_RADIUS, TORNADOES } from '@shared/balance'
+
 import { runtime } from '../game/runtime'
-import { getGame } from '../store/game'
 
 /**
  * Other players, as the network last described them. Network callbacks write here;
@@ -15,16 +15,7 @@ export const remotePlayers = new Map()
 
 const MAX_SNAPSHOTS = 24
 
-/** Everyone's synced state, whichever world they're in, so a change of world can redraw them. */
-const latest = new Map()
-
 export function upsertRemotePlayer(sessionId, state) {
-  latest.set(sessionId, state)
-  // Only players in your world are drawn: each world feels like its own place.
-  if ((state.world || 0) !== (getGame().profile.world || 0)) {
-    dropRemotePlayer(sessionId)
-    return
-  }
   let r = remotePlayers.get(sessionId)
   if (!r) {
     r = {
@@ -34,31 +25,31 @@ export function upsertRemotePlayer(sessionId, state) {
       uid: '',
       snaps: [],
       position: new Vector3(state.x, state.y, state.z),
+      /** Their velocity (m/s), worked out from the interpolated positions: the funnel's lean. */
+      vx: 0,
+      vz: 0,
       yaw: state.rotY,
       speed: 0,
       anim: 'idle',
-      tireId: 'bicycle',
+      tornado: TORNADOES[0].id,
+      radius: BASE_RADIUS,
       /** Their avatar's outfit, parsed from `look`; `lookKey` is the raw string. */
       look: null,
       lookKey: '',
       petIds: [],
       /** Follow state per equipped pet, grown as needed and reused. */
       pets: [],
-      walkPhase: 0,
-      /** Their launch replayed down the runway (RemotePlayers fills it in while `flying`). */
-      flight: createRideState(),
-      flying: false,
-      pulling: false,
+      spin: Math.random() * 6,
     }
-    // Its own point: while they fly it follows them down the runway (RemotePlayers).
-    r.shadow = { position: r.position.clone(), size: 1.1, visible: true }
+    r.shadow = { position: r.position, size: 2, visible: true }
     runtime.shadowCasters.add(r.shadow)
     remotePlayers.set(sessionId, r)
   }
   r.name = state.name
   r.uid = state.uid || ''
   r.anim = state.anim
-  r.tireId = state.tireId
+  r.tornado = state.tornado || TORNADOES[0].id
+  r.radius = state.radius > 0 ? state.radius : BASE_RADIUS
   r.level = state.level
   r.rebirths = state.rebirths
   if (state.look !== r.lookKey) {
@@ -80,27 +71,14 @@ export function upsertRemotePlayer(sessionId, state) {
   }
 }
 
-/** You changed world: shows the players in the new one, hides the rest. */
-export function refreshRemoteWorlds() {
-  for (const [sessionId, state] of latest) upsertRemotePlayer(sessionId, state)
-}
-
 export function removeRemotePlayer(sessionId) {
-  latest.delete(sessionId)
-  dropRemotePlayer(sessionId)
-}
-
-function dropRemotePlayer(sessionId) {
   const r = remotePlayers.get(sessionId)
   if (!r) return
   runtime.shadowCasters.delete(r.shadow)
-  runtime.ghostRolls.delete(sessionId)
   remotePlayers.delete(sessionId)
 }
 
 export function clearRemotePlayers() {
   for (const id of [...remotePlayers.keys()]) removeRemotePlayer(id)
-  latest.clear()
   runtime.remotePets.length = 0
-  runtime.ghostRolls.clear()
 }

@@ -314,7 +314,83 @@ const friends = svg(
   <path d="M44 84c0-18 9-30 22-30s24 12 24 30z" fill="#ff6ab8" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>`,
 )
 
+
+/** A tornado: a white-and-sky funnel of stacked swirling bands, a few bricks flying round it. */
+const tornado = svg(
+  `<g stroke="${OUT}" stroke-width="5.5" stroke-linejoin="round" fill="url(#tn-g)">
+    <path d="M10 14c0-5 80-5 80 0s-10 9-40 9S10 19 10 14z"/>
+    <path d="M18 30c0-4 62-4 62 0s-8 8-32 8-30-4-30-8z"/>
+    <path d="M28 46c0-3 44-3 44 0s-6 7-22 7-22-4-22-7z"/>
+    <path d="M36 61c0-3 28-3 28 0s-4 6-14 6-14-3-14-6z"/>
+    <path d="M42 75c0-2 16-2 16 0s-3 5-8 5-8-3-8-5z"/>
+    <path d="M47 87c0-2 6-2 6 0s-1 4-3 4-3-2-3-4z"/>
+  </g>
+  <path d="M20 13c10-3 40-4 56-1" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>
+  <rect x="80" y="38" width="10" height="9" rx="2" fill="#ff7a3a" stroke="${OUT}" stroke-width="3.5" transform="rotate(20 85 42)"/>
+  <rect x="8" y="52" width="9" height="8" rx="2" fill="#ffd21f" stroke="${OUT}" stroke-width="3.5" transform="rotate(-25 12 56)"/>
+  <rect x="72" y="66" width="8" height="7" rx="2" fill="#5ad84a" stroke="${OUT}" stroke-width="3" transform="rotate(35 76 70)"/>`,
+  vgrad('tn-g', [
+    [0, '#ffffff'],
+    [0.5, '#cfe6ff'],
+    [1, '#7fb4e8'],
+  ]),
+)
+
+/** Power: a fat lightning bolt, electric green-yellow. */
+const bolt = svg(
+  `<path d="M58 6L18 56h26l-8 38 46-54H54z" fill="url(#bl-g)" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M54 14L28 50" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".7"/>`,
+  vgrad('bl-g', [
+    [0, '#fbff9a'],
+    [0.55, '#c6ff3a'],
+    [1, '#4fd12a'],
+  ]),
+)
+
+/** A padlock. */
+const lock = svg(
+  `<path d="M30 44V30a20 20 0 0140 0v14" fill="none" stroke="${OUT}" stroke-width="12"/>
+  <path d="M30 44V30a20 20 0 0140 0v14" fill="none" stroke="#c8ccd4" stroke-width="5"/>
+  <rect x="18" y="42" width="64" height="48" rx="9" fill="url(#lk-g)" stroke="${OUT}" stroke-width="6"/>
+  <circle cx="50" cy="62" r="7" fill="${OUT}"/><rect x="47" y="64" width="6" height="14" rx="2" fill="${OUT}"/>`,
+  vgrad('lk-g', [
+    [0, '#ffe27a'],
+    [1, '#f08c00'],
+  ]),
+)
+
+/** A city: three toy towers with lit windows. */
+const city = svg(
+  `<g stroke="${OUT}" stroke-width="5" stroke-linejoin="round">
+    <rect x="8" y="40" width="26" height="52" rx="3" fill="#ff7a9a"/>
+    <rect x="36" y="14" width="28" height="78" rx="3" fill="#5fb8ff"/>
+    <rect x="66" y="30" width="26" height="62" rx="3" fill="#ffd21f"/>
+  </g>
+  <g fill="#fff6c8">
+    <rect x="14" y="48" width="6" height="7"/><rect x="23" y="48" width="6" height="7"/><rect x="14" y="62" width="6" height="7"/><rect x="23" y="62" width="6" height="7"/>
+    <rect x="42" y="24" width="6" height="7"/><rect x="52" y="24" width="6" height="7"/><rect x="42" y="38" width="6" height="7"/><rect x="52" y="38" width="6" height="7"/><rect x="42" y="52" width="6" height="7"/><rect x="52" y="52" width="6" height="7"/>
+    <rect x="72" y="40" width="6" height="7"/><rect x="81" y="40" width="6" height="7"/><rect x="72" y="54" width="6" height="7"/><rect x="81" y="54" width="6" height="7"/>
+  </g>`,
+)
+
+/** An upgrade: a big green arrow pointing up out of a gold bar. */
+const upgrade = svg(
+  `<path d="M50 6L14 46h20v26h32V46h20z" fill="url(#up-g)" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="16" y="78" width="68" height="14" rx="5" fill="#ffd21f" stroke="${OUT}" stroke-width="5"/>
+  <path d="M48 16L26 40" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".75"/>`,
+  vgrad('up-g', [
+    [0, '#b6ff6a'],
+    [0.5, '#57e83a'],
+    [1, '#19b52a'],
+  ]),
+)
+
 export const ICON_SVGS = {
+  tornado,
+  bolt,
+  lock,
+  city,
+  upgrade,
   quest,
   flame,
   friends,

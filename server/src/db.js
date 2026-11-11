@@ -29,16 +29,16 @@ import { normalizeProfile } from '../../shared/logic.js'
  *   before it is applied, so it lands exactly once however many pods look at it.
  */
 
-const DB_PATH = process.env.DB_PATH || fileURLToPath(new URL('../data/tire.db', import.meta.url))
+const DB_PATH = process.env.DB_PATH || fileURLToPath(new URL('../data/tornado.db', import.meta.url))
 
-const BOARDS = { rebirths: 'rebirths', wins: 'totalWins', distance: 'bestDistance', playtime: 'playtime' }
+const BOARDS = { rebirths: 'rebirths', wins: 'totalWins', destroyed: 'destroyed', playtime: 'playtime' }
 
 const leaderboardFields = (profile) => ({
   name: profile.name,
   rebirths: profile.rebirths,
   totalWins: profile.stats.totalWins,
   playtime: profile.stats.playtime,
-  bestDistance: profile.stats.bestDistance,
+  destroyed: profile.stats.absorbed || 0,
   updatedAt: profile.lastSeen,
 })
 
@@ -171,13 +171,13 @@ async function openSqlite(path) {
       rebirths INTEGER NOT NULL DEFAULT 0,
       total_wins REAL NOT NULL DEFAULT 0,
       playtime REAL NOT NULL DEFAULT 0,
-      best_distance REAL NOT NULL DEFAULT 0,
+      destroyed REAL NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS profiles_rebirths ON profiles (rebirths DESC);
     CREATE INDEX IF NOT EXISTS profiles_wins ON profiles (total_wins DESC);
     CREATE INDEX IF NOT EXISTS profiles_playtime ON profiles (playtime DESC);
-    CREATE INDEX IF NOT EXISTS profiles_distance ON profiles (best_distance DESC);
+    CREATE INDEX IF NOT EXISTS profiles_destroyed ON profiles (destroyed DESC);
     CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS gem_grants (
       txn TEXT PRIMARY KEY,
@@ -195,7 +195,7 @@ async function openSqlite(path) {
   if (!db.prepare('PRAGMA table_info(profiles)').all().some((c) => c.name === 'carried_to')) {
     db.exec('ALTER TABLE profiles ADD COLUMN carried_to TEXT')
   }
-  const columns = { rebirths: 'rebirths', wins: 'total_wins', distance: 'best_distance', playtime: 'playtime' }
+  const columns = { rebirths: 'rebirths', wins: 'total_wins', destroyed: 'destroyed', playtime: 'playtime' }
   const readStock = () => {
     const row = db.prepare("SELECT value FROM kv WHERE key = 'sphinxStock'").get()
     return row ? Number(row.value) : SPHINX_STOCK_DEFAULT
@@ -209,13 +209,13 @@ async function openSqlite(path) {
     async save(profile) {
       const f = leaderboardFields(profile)
       db.prepare(
-        `INSERT INTO profiles (id, name, data, rebirths, total_wins, playtime, best_distance, updated_at)
+        `INSERT INTO profiles (id, name, data, rebirths, total_wins, playtime, destroyed, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name, data = excluded.data, rebirths = excluded.rebirths,
            total_wins = excluded.total_wins, playtime = excluded.playtime,
-           best_distance = excluded.best_distance, updated_at = excluded.updated_at`,
-      ).run(profile.id, f.name, JSON.stringify(profile), f.rebirths, f.totalWins, f.playtime, f.bestDistance, f.updatedAt)
+           destroyed = excluded.destroyed, updated_at = excluded.updated_at`,
+      ).run(profile.id, f.name, JSON.stringify(profile), f.rebirths, f.totalWins, f.playtime, f.destroyed, f.updatedAt)
       return true
     },
     async top(limit) {
@@ -237,9 +237,9 @@ async function openSqlite(path) {
       // Synchronous, so nothing can come between the checks above and these two writes.
       db.prepare('UPDATE profiles SET carried_to = ? WHERE id = ?').run(accountId, guestId)
       db.prepare(
-        `INSERT INTO profiles (id, name, data, rebirths, total_wins, playtime, best_distance, updated_at)
+        `INSERT INTO profiles (id, name, data, rebirths, total_wins, playtime, destroyed, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(accountId, f.name, JSON.stringify(profile), f.rebirths, f.totalWins, f.playtime, f.bestDistance, f.updatedAt)
+      ).run(accountId, f.name, JSON.stringify(profile), f.rebirths, f.totalWins, f.playtime, f.destroyed, f.updatedAt)
       return true
     },
     async recordGem(grant) {

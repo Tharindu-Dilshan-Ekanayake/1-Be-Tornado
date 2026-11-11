@@ -1,5 +1,5 @@
 import { setAdBreakMuted, setMasterVolume, setMusicVolume } from '../audio/sfx'
-import { respawn, runtime } from '../game/runtime'
+import { actions } from '../net/actions'
 import { getGame, useGame } from '../store/game'
 import { QUALITY_LEVELS, useQuality } from '../store/quality'
 import { handleChatMessage } from './chat'
@@ -135,11 +135,9 @@ function installSettings(sdk) {
 function onPlayerEvent(event, data) {
   switch (event) {
     case 'respawn_request':
-      // Not while your tire is rolling: you're frozen at the Roll Zone until it stops.
-      if (runtime.player.frozen) return
+      // Back to the lobby, the server's way (it owns where you are).
       stopLocalEmote()
-      respawn()
-      runtime.camera.snap = true
+      actions.teleport(-1)
       return
     case 'play_emote':
       playLocalEmote(typeof data === 'string' ? data : data?.id ?? data?.emoteId)
@@ -217,7 +215,7 @@ function boardScores(profile) {
   return {
     rebirths: Math.floor(Number(profile?.rebirths) || 0),
     wins: Math.floor(Number(stats.totalWins) || 0),
-    distance: Math.floor(Number(stats.bestDistance) || 0),
+    destroyed: Math.floor(Number(stats.absorbed) || 0),
     playtime: Math.floor((Number(stats.playtime) || 0) / 60),
   }
 }
@@ -225,7 +223,7 @@ function boardScores(profile) {
 /**
  * Online, the game server submits leaderboard scores. Offline (no server, see
  * net/localServer.js) nobody would, so the browser does: after profile changes (each
- * roll, rebirth...), throttled, and only scores higher than the last sent ("best" mode
+ * swallow, rebirth...), throttled, and only scores higher than the last sent ("best" mode
  * boards keep the best anyway). Signed-in players only: a guest has no board entry.
  */
 function installOfflineLeaderboards(sdk) {

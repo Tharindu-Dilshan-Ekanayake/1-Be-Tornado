@@ -1,7 +1,7 @@
-import { DAY_MS, dayNumber, QUEST_TIERS, STREAK_MAX_DAYS, streakMultiplier } from '@shared/balance'
+import { DAY_MS, dayNumber, LOGIN_MAX_DAYS, loginMultiplier, QUEST_TIERS } from '@shared/balance'
 import { questBonusReward, questDone, questReward, questText } from '@shared/engage'
 import { formatClock, formatNumber } from '@shared/format'
-import { streakDays } from '@shared/logic'
+import { loginDays } from '@shared/logic'
 
 import { actions } from '../../net/actions'
 import { useGame } from '../../store/game'
@@ -104,10 +104,10 @@ function QuestCard({ quest, index, profile }) {
 
 /** The login streak: how many days, what it's paying, and what tomorrow brings. */
 function StreakCard({ profile, now }) {
-  const days = streakDays(profile, now)
-  const mult = streakMultiplier(days)
-  const next = streakMultiplier(days + 1)
-  const maxed = days >= STREAK_MAX_DAYS
+  const days = loginDays(profile, now)
+  const mult = loginMultiplier(days)
+  const next = loginMultiplier(days + 1)
+  const maxed = days >= LOGIN_MAX_DAYS
   return (
     <div className="flex items-center" style={{ gap: u(14), padding: u(12), borderRadius: u(8), border: `${u(5)} solid #111`, background: 'linear-gradient(180deg, #ff9a3a, #e8541e)' }}>
       <Icon name="flame" size={u(96)} />
@@ -118,8 +118,8 @@ function StreakCard({ profile, now }) {
         <span style={{ fontSize: u(28) }}>
           <StrokeText stroke={u(6)} style={{ whiteSpace: 'normal' }}>
             {maxed
-              ? `MAX STREAK: x${mult.toFixed(1)} Wins on every launch! Keep it going every day.`
-              : `x${mult.toFixed(1)} Wins on every launch - come back tomorrow for x${next.toFixed(1)}! Miss a day and it starts again.`}
+              ? `MAX STREAK: x${mult.toFixed(1)} Wins! Keep it going every day.`
+              : `x${mult.toFixed(1)} Wins - come back tomorrow for x${next.toFixed(1)}! Miss a day and it starts again.`}
           </StrokeText>
         </span>
       </div>

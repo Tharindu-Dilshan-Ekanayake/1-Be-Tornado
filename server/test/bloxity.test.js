@@ -47,7 +47,7 @@ test('Boxity URLs come from the environment, production only as the fallback', (
   assert.equal(local.matchmakerUrl, 'https://play.bloxity.io')
   assert.equal(local.portalUrl, 'https://bloxity.io')
   assert.equal(local.staticUrl, 'https://static.bloxity.io')
-  assert.equal(local.gameSlug, '1-arm-length')
+  assert.equal(local.gameSlug, '1-be-tornado')
   assert.equal(local.hosted, false)
   assert.equal(hosted.apiUrl, 'https://api.stage.example', 'trailing slash trimmed')
   assert.equal(hosted.gameSlug, 'tire')
@@ -112,8 +112,8 @@ test('an ad pays only when Boxity says the token is valid', async () => {
 test('leaderboard scores are whole numbers from the profile', () => {
   const p = createProfile('a', 'A')
   Object.assign(p, { rebirths: 3 })
-  Object.assign(p.stats, { totalWins: 1234.6, bestDistance: 569.9, playtime: 3599 })
-  assert.deepEqual(leaderboardScores(p), { rebirths: 3, wins: 1234, distance: 569, playtime: 59 })
+  Object.assign(p.stats, { totalWins: 1234.6, absorbed: 569, playtime: 3599 })
+  assert.deepEqual(leaderboardScores(p), { rebirths: 3, wins: 1234, destroyed: 569, playtime: 59 })
   assert.deepEqual(
     BLOXITY_LEADERBOARDS.map((b) => b.id),
     Object.keys(leaderboardScores(p)),
@@ -126,7 +126,7 @@ test('only changed scores are reported, as legion_<id>', () => {
   const lastSent = new Map([
     ['legion_a|rebirths', 2],
     ['legion_a|wins', 0],
-    ['legion_a|distance', 0],
+    ['legion_a|destroyed', 0],
   ])
   assert.deepEqual(changedScores([{ id: 'a', profile: p }], lastSent), [{ board: 'playtime', userId: 'legion_a', score: 0 }])
   assert.deepEqual(

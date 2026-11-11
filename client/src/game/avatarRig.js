@@ -15,7 +15,6 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { BACK_BONE, HAT_BONE, NECK_OFFSET_BONE, PART_SLOTS, WORN_SLOTS } from '../bloxity/avatarAssets'
-import { patchArmMaterial } from './armStyles'
 import { computePose, POSED_BONES } from './playerPose'
 
 /**
@@ -348,7 +347,7 @@ export function mergeBody(rig) {
   const geometry = mergeGeometries(pieces, false)
   for (const piece of pieces) piece.dispose()
   if (!geometry) return null
-  const body = new SkinnedMesh(geometry, patchArmMaterial(new MeshLambertMaterial({ map: parts[0].material?.map ?? null })))
+  const body = new SkinnedMesh(geometry, new MeshLambertMaterial({ map: parts[0].material?.map ?? null }))
   body.name = 'merged_body'
   body.castShadow = true
   body.receiveShadow = true

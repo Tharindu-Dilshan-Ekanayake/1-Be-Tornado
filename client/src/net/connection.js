@@ -2,9 +2,8 @@ import { reportedAnim } from '../bloxity/emotes'
 import { environment } from '../bloxity/env'
 import { GAME_SLUG, joinToken } from '../bloxity/identity'
 import { getSDK, safeCall, waitForSDK } from '../bloxity/sdk'
-import { LAUNCH_STAND } from '@shared/world'
 
-import { meterAtZ } from '../game/roll/path'
+import { resetCityState } from '../game/city/cityState'
 import { runtime } from '../game/runtime'
 import { getGame } from '../store/game'
 import { setTransport } from './actions'
@@ -64,7 +63,7 @@ async function findDevServer() {
   for (const port of DEV_PORTS) candidates.push(`${window.location.protocol}//${window.location.hostname}:${port}`)
   for (const url of new Set(candidates)) {
     const health = await healthOf(url)
-    if (health?.ok && health.game === '1-arm-length') return url
+    if (health?.ok && health.game === '1-be-tornado') return url
   }
   return null
 }
@@ -217,7 +216,10 @@ function attachRoom(room, identity, Callbacks, endpoint, gen) {
   room.onMessage('*', (type, payload) => {
     switch (type) {
       case 'spawn':
+        // A new room: a fresh server session, so every city is whole again.
+        resetCityState()
         runtime.player.position.set(payload.x, 0, payload.z)
+        runtime.camera.snap = true
         break
       case 'correct':
         runtime.player.position.set(payload.x, payload.y, payload.z)
@@ -227,20 +229,6 @@ function attachRoom(room, identity, Callbacks, endpoint, gen) {
         break
       case 'leaderboards':
         getGame().setLeaderboards(payload)
-        break
-      case 'ghostRoll':
-        // Never your own launch (you're flying already), and only launches down your
-        // world's runway. Their avatar replays it (remote/): from the launch posts, as far
-        // back as they'd walked.
-        if (payload.sid === room.sessionId) break
-        if ((payload.world || 0) !== (getGame().profile.world || 0)) break
-        runtime.ghostRolls.set(payload.sid, {
-          ...payload,
-          fromMeter: meterAtZ(LAUNCH_STAND.z),
-          startX: LAUNCH_STAND.x,
-          pull: Math.max(0, payload.z - LAUNCH_STAND.z),
-          startedAt: performance.now(),
-        })
         break
       case 'kicked':
         leaving = true

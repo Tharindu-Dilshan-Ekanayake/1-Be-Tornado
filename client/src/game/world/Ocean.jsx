@@ -3,10 +3,10 @@ import { PlaneGeometry, ShaderMaterial, UniformsLib, UniformsUtils } from 'three
 
 import { toyTime } from '../materials'
 
-/** How far the sea reaches: well past the far plane every way, and the whole kick field's length north. */
-const SEA = { minX: -3000, maxX: 3000, minZ: -24000, maxZ: 3000 }
-/** Its height: under the beach's sand (0) and the kick field's ground (top 0), 30 cm down. */
-const SEA_Y = -0.3
+/** How far the sea reaches: well past the far plane every way, and past the last city north. */
+const SEA = { minX: -2500, maxX: 2500, minZ: -6000, maxZ: 2500 }
+/** Its height: the islands' cliffs (down to -5.3) stand in it, a few metres showing. */
+const SEA_Y = -2.4
 
 const vertexShader = /* glsl */ `
   varying vec3 vWorld;
@@ -34,8 +34,8 @@ const fragmentShader = /* glsl */ `
     float swell = sin(p.x * 0.07 + p.y * 0.045 + uTime * 0.8) + 0.6 * sin(p.x * 0.031 - p.y * 0.083 - uTime * 0.55);
     vec3 deep = vec3(0.02, 0.24, 0.36);
     vec3 shallow = vec3(0.1, 0.62, 0.68);
-    // Shallower (lighter) close in round the stadium.
-    float near = 1.0 - smoothstep(110.0, 260.0, length(p - vec2(0.0, 20.0)));
+    // Shallower (lighter) along the chain of islands.
+    float near = 1.0 - smoothstep(60.0, 200.0, abs(p.x));
     vec3 col = mix(deep, shallow, clamp(0.38 + 0.18 * swell + 0.35 * near, 0.0, 1.0));
     // White crests along the swells, and sun glints.
     float crest = smoothstep(1.25, 1.55, swell);
@@ -48,8 +48,8 @@ const fragmentShader = /* glsl */ `
 `
 
 /**
- * Palm Beach's ocean, all round the beach and along the east side of the kick field, to
- * the horizon. One draw call; animated through the shared clock (toyTime) only.
+ * The sea the islands float on, to the horizon every way. One draw call; animated
+ * through the shared clock (toyTime) only.
  */
 export function Ocean() {
   const { geometry, material } = useMemo(() => {

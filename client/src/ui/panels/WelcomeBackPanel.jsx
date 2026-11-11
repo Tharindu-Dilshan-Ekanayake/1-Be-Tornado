@@ -16,10 +16,10 @@ export function WelcomeBackPanel() {
     <Panel title="WELCOME BACK!" width={760}>
       <div className="flex flex-col items-center text-center" style={{ gap: u(12) }}>
         <span style={{ fontSize: u(34) }}>
-          <StrokeText stroke={u(7)}>You kept training for {formatDuration(data.ms)} while away!</StrokeText>
+          <StrokeText stroke={u(7)}>Your Storm Zone kept spinning for {formatDuration(data.ms)} while you were away!</StrokeText>
         </span>
         <div className="flex items-center" style={{ gap: u(10), fontSize: u(84) }}>
-          <Icon name="heart" size={u(96)} />
+          <Icon name="bolt" size={u(96)} />
           <StrokeText stroke={u(15)} gradient={GRADIENTS.gold}>
             +{formatNumber(data.health)} Power
           </StrokeText>
